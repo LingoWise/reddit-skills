@@ -23,8 +23,9 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    fetcher = get_fetcher()
+    fetcher = None
     try:
+        fetcher = get_fetcher()
         records = get_user(
             args.name,
             fetcher=fetcher,
@@ -36,7 +37,8 @@ def main(argv=None):
         print(json.dumps({"event": "done", "success": False, "error": str(exc), "code": "fetch_error"}))
         return 1
     finally:
-        fetcher.close()
+        if fetcher is not None:
+            fetcher.close()
 
     out_path = Path(args.out) if args.out else records_dir() / f"user_{args.name}_{int(time.time())}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

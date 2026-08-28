@@ -7,7 +7,7 @@ PUBLIC_BASE = "https://www.reddit.com"
 def post_record(post: dict) -> dict:
     """Reddit post dict → validator record shape (is_comment=False)."""
     post_id = post.get("id") or ""
-    subreddit = post.get("subreddit", "unknown")
+    subreddit = post.get("subreddit") or "unknown"
     title = post.get("title", "")
     selftext = post.get("selftext", "")
     url = post.get("url", "") or urljoin(PUBLIC_BASE, post.get("permalink", ""))
@@ -28,7 +28,7 @@ def post_record(post: dict) -> dict:
 def comment_record(post: dict, comment: dict) -> dict:
     """Reddit comment dict → validator record shape (is_comment=True)."""
     post_id = post.get("id") or ""
-    subreddit = post.get("subreddit", "unknown")
+    subreddit = post.get("subreddit") or "unknown"
     permalink = comment.get("permalink", post.get("permalink", ""))
     url = urljoin(PUBLIC_BASE, permalink) if permalink.startswith("/") else comment.get("url", "")
     return {
@@ -52,8 +52,8 @@ def user_record(item: dict) -> dict:
 
     if kind == "t1":
         # comment
-        post_id = data.get("link_id", "").lstrip("t3_")
-        subreddit = data.get("subreddit", "unknown")
+        post_id = data.get("link_id", "").removeprefix("t3_")
+        subreddit = data.get("subreddit") or "unknown"
         permalink = data.get("permalink", "")
         url = urljoin(PUBLIC_BASE, permalink) if permalink.startswith("/") else data.get("url", "")
         return {
@@ -71,7 +71,7 @@ def user_record(item: dict) -> dict:
 
     # post
     post_id = data.get("id") or ""
-    subreddit = data.get("subreddit", "unknown")
+    subreddit = data.get("subreddit") or "unknown"
     title = data.get("title", "")
     selftext = data.get("selftext", "")
     url = data.get("url", "") or urljoin(PUBLIC_BASE, data.get("permalink", ""))
