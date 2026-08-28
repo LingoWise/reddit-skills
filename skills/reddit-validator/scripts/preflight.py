@@ -8,7 +8,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
-from dotenv import load_dotenv
 
 
 REQUIRED_ENV = []
@@ -22,19 +21,20 @@ REQUIRED_DEPS = [
 ]
 
 
-def _load_dotenv():
-    load_dotenv()
-    root_dotenv = Path(__file__).resolve().parent.parent.parent.parent / ".env"
-    if root_dotenv.exists():
-        load_dotenv(root_dotenv, override=True)
-
-
 def _load_auth():
     auth_path = Path(__file__).resolve().parent.parent.parent / "reddit-auth" / "pipeline" / "auth.py"
     spec = importlib.util.spec_from_file_location("reddit_auth_pipeline_auth", auth_path)
     auth = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(auth)
     return auth
+
+
+def _load_llm():
+    llm_path = Path(__file__).resolve().parent.parent.parent.parent / "src" / "common" / "llm.py"
+    spec = importlib.util.spec_from_file_location("reddit_skills_common_llm", llm_path)
+    llm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(llm)
+    return llm
 
 
 def check_env(required=None):
@@ -61,8 +61,13 @@ def check_reddit(client_id, client_secret, user_agent):
     return auth.validate_credentials()
 
 
+def check_ai():
+    """Check whether an AI provider is available for analysis."""
+    llm = _load_llm()
+    return llm.available()
+
+
 def preflight():
-    _load_dotenv()
     env_ok, missing_env = check_env()
     deps_ok, missing_deps = check_deps()
 
@@ -75,10 +80,13 @@ def preflight():
             os.getenv("REDDIT_USER_AGENT"),
         )
 
+    ai_ok, ai_message = check_ai()
+
     result = {
         "env_ok": env_ok,
         "deps_ok": deps_ok,
         "reddit_ok": reddit_ok,
+        "ai_ok": ai_ok,
     }
     if not env_ok:
         result["missing"] = missing_env
@@ -86,6 +94,8 @@ def preflight():
         result["missing_deps"] = missing_deps
     if not reddit_ok:
         result["reddit_error"] = reddit_message
+    if not ai_ok:
+        result["ai_error"] = ai_message
 
     print(json.dumps(result))
     return result

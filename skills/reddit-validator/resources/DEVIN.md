@@ -17,14 +17,21 @@ Read the JSON output and react:
 | `env_ok`    | Usually no longer critical; only the user name might be set. Proceed if a Reddit method is available.        |
 | `deps_ok`   | Offer `pip install -r <skill_dir>/requirements.txt`, then re-run preflight                                   |
 | `reddit_ok` | Rustwright not installed, or token/PRAW creds wrong. For Rustwright, tell the user a Chromium window will open. |
+| `ai_ok`     | No `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set. Ask the user to set one in the shell if they want AI analysis. |
 
-Only proceed when `deps_ok` and `reddit_ok` are true.
+Only proceed when `deps_ok` and `reddit_ok` are true. `ai_ok` is optional: if false, the agent supplies the analysis manually in Phase 4.
 
-The skill does **not** require an external LLM provider. The agent (Devin) supplies the analysis in Phase 4.
+If the user wants AI-generated analysis, ask them to set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` as shell environment variables before scraping. Do not instruct them to store these keys in `.env`.
 
 ## Phase 2 — Pick a profile
 
-Default to **standard**. If the user hasn't specified, use `AskUserQuestion` to offer the choice. Signals:
+Ask the user to pick a profile with `AskUserQuestion` if they haven't specified one. Choices:
+
+- **fast** — ~5 min, 3 subreddits × 5 posts
+- **standard** — ~30 min, 5 subreddits × 25 posts
+- **deep** — ~60 min, 10 subreddits × 100 posts
+
+Signals:
 
 - "fast" / "快速" / "试试" / "smoke test" / dev iteration → **fast**
 - default / "完整" / "正式" / "深度调研" / no signal → **standard**
@@ -38,6 +45,8 @@ Use the Bash tool with `run_in_background: true`, then poll output with `TaskOut
 
 ```json
 {"event":"run_started","run_id":"...","profile":"standard","idea":"..."}
+{"event":"stage","step":"login","progress":0.0,"message":"..."}
+{"event":"stage","step":"login","progress":1.0,"message":"..."}
 {"event":"stage","step":"scrape_data","progress":0.0,"message":"..."}
 ...
 {"event":"done","success":true,"needs_analysis":true,"records_path":"...","run_id":"..."}
@@ -55,11 +64,12 @@ On `done` with `success:false`, read `error` and `failed_step`, then jump to Pha
 
 When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), the `reddit-auth` skill opens a Chromium window on `https://www.reddit.com`. The user clicks **Log in** and completes the flow. `reddit-auth` polls `/api/v1/me` and continues once a real user is detected.
 
-## Phase 4 — Analyze with Devin's LLM
+## Phase 4 — Analyze
 
 1. Read `records_path`.
-2. Use Devin's own model to analyze the Reddit corpus and produce the structured analysis schema described in `SKILL.md`.
-3. Save it to a JSON file (e.g. `<skill_dir>/analysis.json`).
+2. If the user configured `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, run `python "<skill_dir>/scripts/render_report.py"` after generating the analysis JSON with `pipeline/analyzer.py`, or call `analyzer.analyze(records, idea, profile)` directly.
+3. Otherwise, use Devin's own model to analyze the Reddit corpus and produce the structured analysis schema described in `SKILL.md`.
+4. Save it to a JSON file (e.g. `<skill_dir>/analysis.json`).
 
 ## Phase 5 — Render the report
 

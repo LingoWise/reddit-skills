@@ -37,6 +37,16 @@ TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <div class="section">
+    <h2>Market Snapshot</h2>
+    <p class="meta">What is happening in this space right now, grounded in the Reddit data.</p>
+    <ul>
+    {% for m in market_snapshot %}
+      <li>{{ m }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+
+  <div class="section">
     <h2>Top Pain Points</h2>
     <ul>
     {% for p in pain_points %}
@@ -59,6 +69,16 @@ TEMPLATE = """<!DOCTYPE html>
     <ul>
     {% for o in opportunities %}
       <li>{{ o.text }} (weight {{ o.weight }})</li>
+    {% endfor %}
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>How to Win</h2>
+    <p class="meta">Subjective strategic playbook — opinionated, not generic.</p>
+    <ul>
+    {% for w in how_to_win %}
+      <li>{{ w }}</li>
     {% endfor %}
     </ul>
   </div>
@@ -116,9 +136,11 @@ def render(analysis, idea, run_id, profile):
         "score": analysis.get("score", 0),
         "score_class": _score_class(analysis.get("score", 0)),
         "interpretation": _interpretation(analysis.get("score", 0)),
+        "market_snapshot": analysis.get("market_snapshot", []),
         "pain_points": analysis.get("pain_points", []),
         "existing_solutions": analysis.get("existing_solutions", []),
         "opportunities": analysis.get("opportunities", []),
+        "how_to_win": analysis.get("how_to_win", []),
         "recommendations": analysis.get("recommendations", []),
         "comment_tags": analysis.get("comment_tags", {}),
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),

@@ -3,3 +3,4 @@ python-dotenv
 praw
 jinja2
 rustwright
+openai

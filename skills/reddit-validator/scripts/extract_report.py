@@ -94,15 +94,19 @@ def extract(argv=None):
         return summary
 
     score = done.get("score", 0)
+    market_snapshot = done.get("market_snapshot", [])[:5]
     pain_points = [p.get("text", "") for p in done.get("pain_points", [])[:3]]
     opportunities = [o.get("text", "") for o in done.get("opportunities", [])[:3]]
+    how_to_win = done.get("how_to_win", [])[:3]
     report_path = done.get("report_path") or str(reports_dir() / f"{_safe_idea(done.get('idea', 'unknown'))}_{done.get('run_id')}.html")
 
     summary = {
         "score": score,
         "interpretation": _interpretation(score),
+        "market_snapshot": market_snapshot,
         "top_pain_points": pain_points,
         "top_opportunities": opportunities,
+        "how_to_win": how_to_win,
         "report_path": report_path,
         "run_id": done.get("run_id"),
     }

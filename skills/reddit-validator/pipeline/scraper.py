@@ -122,13 +122,28 @@ def _comment_record(post, comment):
     }
 
 
-def _api_comments(post, base, headers):
+def _api_comments(post, base, session=None):
     permalink = post.get("permalink", "")
     if not permalink:
         return []
     url = f"{base}{permalink}.json"
+    if session is None:
+        session = requests
+
+    headers = None
+    if session is requests:
+        auth = _load_auth()
+        if base == OAUTH_BASE:
+            token = auth.bearer_token()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "User-Agent": auth.user_agent(),
+            } if token else {"User-Agent": auth.user_agent()}
+        else:
+            headers = {"User-Agent": auth.user_agent()}
+
     try:
-        response = requests.get(url, headers=headers, params={"limit": 3, "sort": "top"}, timeout=15)
+        response = session.get(url, headers=headers, params={"limit": 3, "sort": "top"}, timeout=15)
         response.raise_for_status()
     except requests.RequestException:
         return []
@@ -142,8 +157,25 @@ def _api_comments(post, base, headers):
     return [child.get("data", {}) for child in children if child.get("data")]
 
 
-def _api_search(idea, limit, base, headers):
-    response = requests.get(
+def _api_search(idea, limit, base, session=None):
+    if session is None:
+        session = requests
+
+    headers = None
+    if session is requests:
+        auth = _load_auth()
+        if base == OAUTH_BASE:
+            token = auth.bearer_token()
+            if not token:
+                raise RuntimeError("No bearer token could be parsed from REDDIT_CLIENT_SECRET")
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "User-Agent": auth.user_agent(),
+            }
+        else:
+            headers = {"User-Agent": auth.user_agent()}
+
+    response = session.get(
         f"{base}/r/all/search",
         headers=headers,
         params=_search_params(idea, limit),
@@ -153,7 +185,7 @@ def _api_search(idea, limit, base, headers):
     return response.json()
 
 
-def _records_from_search(data, total_posts, base, headers):
+def _records_from_search(data, total_posts, base, session=None):
     records = []
     children = data.get("data", {}).get("children", [])[:total_posts]
     for child in children:
@@ -161,32 +193,42 @@ def _records_from_search(data, total_posts, base, headers):
         if not post:
             continue
         records.append(_post_record(post))
-        for comment in _api_comments(post, base, headers):
+        for comment in _api_comments(post, base, session=session):
             records.append(_comment_record(post, comment))
     return records
 
 
-def _public_search(idea, profile):
-    auth = _load_auth()
-    headers = {"User-Agent": auth.user_agent()}
+def _requests_search(idea, profile, session, base):
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-    data = _api_search(idea, total_posts, PUBLIC_BASE, headers)
-    return _records_from_search(data, total_posts, PUBLIC_BASE, headers)
+    data = _api_search(idea, total_posts, base, session=session)
+    return _records_from_search(data, total_posts, base, session=session)
 
 
-def _bearer_search(idea, profile):
+def _public_search(idea, profile, session=None):
+    if session is None:
+        auth = _load_auth()
+        session = requests.Session()
+        session.headers.update({"User-Agent": auth.user_agent()})
+    return _requests_search(idea, profile, session=session, base=PUBLIC_BASE)
+
+
+def _bearer_search(idea, profile, session=None):
     auth = _load_auth()
-    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-    token = auth.bearer_token()
-    if not token:
-        raise RuntimeError("No bearer token could be parsed from REDDIT_CLIENT_SECRET")
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": auth.user_agent()}
-    data = _api_search(idea, total_posts, OAUTH_BASE, headers)
-    return _records_from_search(data, total_posts, OAUTH_BASE, headers)
+    if session is None:
+        session = requests.Session()
+        token = auth.bearer_token()
+        if not token:
+            raise RuntimeError("No bearer token could be parsed from REDDIT_CLIENT_SECRET")
+        session.headers.update({
+            "Authorization": f"Bearer {token}",
+            "User-Agent": auth.user_agent(),
+        })
+    return _requests_search(idea, profile, session=session, base=OAUTH_BASE)
 
 
-def _praw_search(idea, profile):
-    client = _praw_client()
+def _praw_search(idea, profile, client=None):
+    if client is None:
+        client = _praw_client()
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
     submissions = client.subreddit("all").search(
         idea,
@@ -197,11 +239,13 @@ def _praw_search(idea, profile):
     return _praw_records(submissions, total_posts)
 
 
-def _rustwright_search(idea, profile):
+def _rustwright_search(idea, profile, session=None):
     auth = _load_auth()
-    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-    session = auth.ensure_authenticated_page(timeout=300)
+    close_session = session is None
+    if close_session:
+        session = auth.ensure_authenticated_page(timeout=300)
     try:
+        total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
         page = session.page
         search_data = auth.fetch_json(
             page,
@@ -235,19 +279,18 @@ def _rustwright_search(idea, profile):
 
         return records
     finally:
-        session.close()
+        if close_session:
+            session.close()
 
 
 def scrape(idea, profile, client=None):
     if client is not None:
-        total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-        submissions = client.subreddit("all").search(
-            idea,
-            sort="relevance",
-            time_filter="all",
-            limit=total_posts,
-        )
-        return _praw_records(submissions, total_posts)
+        if hasattr(client, "page"):
+            return _rustwright_search(idea, profile, session=client)
+        if hasattr(client, "subreddit"):
+            return _praw_search(idea, profile, client=client)
+        base = OAUTH_BASE if client.headers.get("Authorization") else PUBLIC_BASE
+        return _requests_search(idea, profile, session=client, base=base)
 
     auth = _load_auth()
     strategy = auth.resolve_strategy()
