@@ -69,6 +69,30 @@ def extract(argv=None):
         log_path = _latest_log()
 
     done = _extract_done_event(log_path)
+
+    if done.get("needs_analysis"):
+        summary = {
+            "status": "needs_analysis",
+            "message": "Use your agent's LLM to analyze the records and produce an analysis JSON, then run scripts/render_report.py.",
+            "records_path": done.get("records_path"),
+            "run_id": done.get("run_id"),
+            "idea": done.get("idea"),
+        }
+        print(json.dumps(summary, indent=2))
+        return summary
+
+    if done.get("needs_report"):
+        summary = {
+            "status": "needs_report",
+            "message": "Use your agent's LLM to produce an analysis JSON, then run scripts/render_report.py.",
+            "analysis": done.get("analysis"),
+            "records_path": done.get("records_path"),
+            "run_id": done.get("run_id"),
+            "idea": done.get("idea"),
+        }
+        print(json.dumps(summary, indent=2))
+        return summary
+
     score = done.get("score", 0)
     pain_points = [p.get("text", "") for p in done.get("pain_points", [])[:3]]
     opportunities = [o.get("text", "") for o in done.get("opportunities", [])[:3]]

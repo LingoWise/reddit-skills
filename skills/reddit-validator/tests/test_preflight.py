@@ -70,16 +70,24 @@ class FakeReddit:
 
 class TestCheckReddit:
     def test_ok(self, monkeypatch):
+        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: False)
         monkeypatch.setattr(praw, "Reddit", lambda **_: FakeReddit())
         ok, message = check_reddit("id", "secret", "agent")
         assert ok is True
         assert "authenticated" in message
 
     def test_auth_fails(self, monkeypatch):
+        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: False)
         monkeypatch.setattr(praw, "Reddit", lambda **_: FakeReddit(fail=True))
         ok, message = check_reddit("id", "secret", "agent")
         assert ok is False
         assert "401" in message
+
+    def test_playwright(self, monkeypatch):
+        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: True)
+        ok, message = check_reddit("", "", "")
+        assert ok is True
+        assert "playwright" in message
 
 
 class TestPreflight:
