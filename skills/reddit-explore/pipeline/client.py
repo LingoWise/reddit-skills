@@ -217,7 +217,7 @@ class Fetcher:
                 listing = redditor.comments
             else:
                 listing = redditor.overview
-            sort_attr = "new" if sort == "new" else "hot"
+            sort_attr = sort if sort in ("new", "hot", "top", "controversial") else "hot"
             items = getattr(listing, sort_attr)(limit=limit)
             result = []
             for item in items:
@@ -266,7 +266,7 @@ class Fetcher:
                 idx = parts.index("comments")
                 if idx + 1 < len(parts):
                     return parts[idx + 1]
-        return value.lstrip("t3_")
+        return value.removeprefix("t3_")
 
     @staticmethod
     def _subreddit_name(post: dict) -> str:
@@ -282,7 +282,7 @@ class Fetcher:
             idx = parts.index("r")
             if idx + 1 < len(parts):
                 return parts[idx + 1]
-        return "placeholder"
+        raise LookupError("Could not determine subreddit for post")
 
 
 def get_fetcher() -> Fetcher:
