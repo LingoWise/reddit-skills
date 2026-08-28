@@ -27,6 +27,7 @@ def _emit(log_path, event):
     if log_path:
         with open(log_path, "a") as f:
             f.write(json.dumps(event) + "\n")
+            f.flush()
     return event
 
 
