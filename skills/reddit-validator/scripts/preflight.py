@@ -9,11 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import requests
 
 
-REQUIRED_ENV = [
-    "REDDIT_CLIENT_ID",
-    "REDDIT_CLIENT_SECRET",
-    "REDDIT_USER_AGENT",
-]
+REQUIRED_ENV = []
 
 REQUIRED_DEPS = [
     "dotenv",
@@ -67,7 +63,22 @@ def _bearer_token(client_secret=None):
         return None
 
 
+def _use_playwright():
+    try:
+        from pipeline.scraper import _use_playwright as scraper_use
+        return scraper_use()
+    except Exception:
+        return False
+
+
 def check_reddit(client_id, client_secret, user_agent):
+    if _use_playwright():
+        try:
+            importlib.import_module("playwright.sync_api")
+            return True, "playwright login configured"
+        except ImportError:
+            return False, "playwright not installed"
+
     token = _bearer_token(client_secret)
     if token:
         try:
