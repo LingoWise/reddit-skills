@@ -1,3 +1,5 @@
+import base64
+import json
 import os
 
 import requests
@@ -5,15 +7,22 @@ from dotenv import load_dotenv
 
 
 PUBLIC_BASE = "https://www.reddit.com"
+OAUTH_BASE = "https://oauth.reddit.com"
 
 
 def _praw_client():
     from praw import Reddit
-    return Reddit(
-        client_id=os.getenv("REDDIT_CLIENT_ID"),
-        client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-        user_agent=os.getenv("REDDIT_USER_AGENT"),
-    )
+    username = os.getenv("REDDIT_USERNAME")
+    password = os.getenv("REDDIT_PASSWORD")
+    kwargs = {
+        "client_id": os.getenv("REDDIT_CLIENT_ID"),
+        "client_secret": os.getenv("REDDIT_CLIENT_SECRET"),
+        "user_agent": os.getenv("REDDIT_USER_AGENT"),
+    }
+    if username and password:
+        kwargs["username"] = username
+        kwargs["password"] = password
+    return Reddit(**kwargs)
 
 
 def _praw_records(submissions, total_posts):
@@ -67,7 +76,7 @@ def _search_params(idea, limit):
         "q": idea,
         "sort": "relevance",
         "t": "all",
-        "limit": min(limit, 25),
+        "limit": min(limit, 100),
     }
 
 
@@ -101,11 +110,50 @@ def _comment_record(post, comment):
     }
 
 
-def _public_comments(post, headers):
+def _bearer_token(secret=None):
+    if secret is None:
+        load_dotenv()
+        secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
+    if not secret:
+        return None
+
+    # Case 1: the value is a base64-encoded JSON object containing an access token.
+    try:
+        padded = secret + "=" * (-len(secret) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded))
+        token = data.get("accessToken") or data.get("token")
+        if token:
+            return token
+    except Exception:
+        pass
+
+    # Case 2: the value is a JWT whose payload contains an access token.
+    if "." in secret:
+        try:
+            payload = secret.split(".")[1]
+            padded = payload + "=" * (-len(payload) % 4)
+            data = json.loads(base64.urlsafe_b64decode(padded))
+            token = data.get("accessToken") or data.get("token")
+            if token:
+                return token
+        except Exception:
+            pass
+
+    return None
+
+
+def _bearer_headers():
+    return {
+        "Authorization": f"Bearer {_bearer_token()}",
+        "User-Agent": _user_agent(),
+    }
+
+
+def _api_comments(post, base, headers):
     permalink = post.get("permalink", "")
     if not permalink:
         return []
-    url = f"{PUBLIC_BASE}{permalink}.json"
+    url = f"{base}{permalink}.json"
     try:
         response = requests.get(url, headers=headers, params={"limit": 3, "sort": "top"}, timeout=15)
         response.raise_for_status()
@@ -121,19 +169,18 @@ def _public_comments(post, headers):
     return [child.get("data", {}) for child in children if child.get("data")]
 
 
-def _public_search(idea, profile):
-    load_dotenv()
-    headers = {"User-Agent": _user_agent()}
-    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
+def _api_search(idea, limit, base, headers):
     response = requests.get(
-        f"{PUBLIC_BASE}/search.json",
+        f"{base}/r/all/search",
         headers=headers,
-        params=_search_params(idea, total_posts),
+        params=_search_params(idea, limit),
         timeout=15,
     )
     response.raise_for_status()
-    data = response.json()
+    return response.json()
 
+
+def _records_from_search(data, total_posts, base, headers):
     records = []
     children = data.get("data", {}).get("children", [])[:total_posts]
     for child in children:
@@ -141,9 +188,28 @@ def _public_search(idea, profile):
         if not post:
             continue
         records.append(_post_record(post))
-        for comment in _public_comments(post, headers):
+        for comment in _api_comments(post, base, headers):
             records.append(_comment_record(post, comment))
     return records
+
+
+def _public_search(idea, profile):
+    load_dotenv()
+    headers = {"User-Agent": _user_agent()}
+    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
+    data = _api_search(idea, total_posts, PUBLIC_BASE, headers)
+    return _records_from_search(data, total_posts, PUBLIC_BASE, headers)
+
+
+def _bearer_search(idea, profile):
+    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
+    headers = _bearer_headers()
+    data = _api_search(idea, total_posts, OAUTH_BASE, headers)
+    return _records_from_search(data, total_posts, OAUTH_BASE, headers)
+
+
+def _use_bearer():
+    return _bearer_token() is not None
 
 
 def _use_praw():
@@ -153,6 +219,8 @@ def _use_praw():
     if not client_id or not client_secret:
         return False
     if client_id == "your_reddit_app_client_id" or client_secret == "your_reddit_app_client_secret":
+        return False
+    if _use_bearer():
         return False
     return True
 
@@ -167,6 +235,9 @@ def scrape(idea, profile, client=None):
             limit=total_posts,
         )
         return _praw_records(submissions, total_posts)
+
+    if _use_bearer():
+        return _bearer_search(idea, profile)
 
     if _use_praw():
         client = _praw_client()

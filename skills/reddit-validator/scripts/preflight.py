@@ -58,15 +58,42 @@ def _has_reddit_creds(client_id, client_secret):
     return True
 
 
+def _bearer_token(client_secret=None):
+    try:
+        from pipeline.scraper import _bearer_token as scraper_bearer
+        return scraper_bearer(client_secret)
+    except Exception:
+        return None
+
+
 def check_reddit(client_id, client_secret, user_agent):
+    token = _bearer_token(client_secret)
+    if token:
+        try:
+            response = requests.get(
+                "https://oauth.reddit.com/api/v1/me",
+                headers={"Authorization": f"Bearer {token}", "User-Agent": user_agent or "python:reddit-validator:v0.1"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            return True, "bearer token works"
+        except Exception as exc:
+            return False, f"Bearer token failed: {exc}"
+
     if _has_reddit_creds(client_id, client_secret):
         try:
             from praw import Reddit
-            reddit = Reddit(
-                client_id=client_id,
-                client_secret=client_secret,
-                user_agent=user_agent,
-            )
+            kwargs = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "user_agent": user_agent,
+            }
+            username = os.getenv("REDDIT_USERNAME")
+            password = os.getenv("REDDIT_PASSWORD")
+            if username and password:
+                kwargs["username"] = username
+                kwargs["password"] = password
+            reddit = Reddit(**kwargs)
             _ = reddit.user.me()
             return True, "authenticated"
         except ImportError:
