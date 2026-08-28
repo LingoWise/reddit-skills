@@ -67,17 +67,18 @@ When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), the `reddit-auth` skill
 ## Phase 4 — Analyze
 
 1. Read `records_path`.
-2. If the user configured `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, run `python "<skill_dir>/scripts/render_report.py"` after generating the analysis JSON with `pipeline/analyzer.py`, or call `analyzer.analyze(records, idea, profile)` directly.
-3. Otherwise, use Devin's own model to analyze the Reddit corpus and produce the structured analysis schema described in `SKILL.md`.
-4. Save it to a JSON file (e.g. `<skill_dir>/analysis.json`).
+2. **Detect the user's language** from their original request (e.g. Chinese → `"zh"`, English → `"en"`).
+3. If the user configured `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, call `analyzer.analyze(records, idea, profile, language="<lang>")` directly to generate the analysis JSON.
+4. Otherwise, use Devin's own model to analyze the Reddit corpus and produce the structured analysis schema described in `SKILL.md`. Include `language`, `original_idea`, `analysis_method`, and `sources` on each item.
+5. Save it to a JSON file (e.g. `<skill_dir>/analysis.json`).
 
 ## Phase 5 — Render the report
 
 ```bash
-python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>"
+python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>" --language "<lang>"
 ```
 
-This appends the final `done` event to the log and writes the HTML report.
+This appends the final `done` event to the log, writes the HTML report, and **auto-opens it in the default browser**. Use `--no-open` to suppress.
 
 ## Phase 6 — Surface results
 
@@ -90,9 +91,10 @@ python "<skill_dir>/scripts/extract_report.py" --run-id "<run_id>"
 Tell the user concisely:
 
 - Overall score (0-100): ≥75 strong, 50-74 promising, 30-49 weak, <30 likely no-go
+- Analysis method used
 - Top 3 pain points
 - Top 3 opportunities
-- Report absolute path — offer to open in browser
+- Report absolute path (already opened in browser)
 - Run id
 
 Do not paste full HTML. Offer follow-ups: re-run with `deep`, compare runs, adjust idea wording.
