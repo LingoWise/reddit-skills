@@ -1,4 +1,17 @@
+import importlib.util
 from pathlib import Path
+
+
+def _load_common_paths():
+    """Load the shared paths module from src/common/."""
+    paths_path = Path(__file__).resolve().parent.parent.parent.parent / "src" / "common" / "paths.py"
+    spec = importlib.util.spec_from_file_location("reddit_skills_common_paths", paths_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_common = _load_common_paths()
 
 
 def skill_dir() -> Path:
@@ -7,21 +20,19 @@ def skill_dir() -> Path:
 
 
 def reports_dir() -> Path:
-    path = skill_dir() / "reports"
-    path.mkdir(exist_ok=True)
-    return path
+    return _common.reports_dir()
 
 
 def checkpoints_dir() -> Path:
-    path = skill_dir() / "checkpoints"
-    path.mkdir(exist_ok=True)
-    return path
+    return _common.checkpoints_dir()
 
 
 def logs_dir() -> Path:
-    path = skill_dir() / "logs"
-    path.mkdir(exist_ok=True)
-    return path
+    return _common.logs_dir()
+
+
+def records_dir() -> Path:
+    return _common.records_dir()
 
 
 def latest_run_log() -> Path:

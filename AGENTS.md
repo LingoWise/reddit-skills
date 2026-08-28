@@ -8,6 +8,14 @@ A modular collection of Reddit operation skills for AI agents. Each skill is a s
 
 Cross-skill code lives in `src/common/` at the project root. Skills load these modules via `importlib.util.spec_from_file_location` with a path relative to `__file__` (same pattern used for sibling-skill imports like `reddit-auth`).
 
+### src/common/paths.py
+
+Shared output directory and version constants. All skills write runtime outputs (reports, logs, checkpoints, records) to a single `.reddit-skills/` directory in the current working directory, keeping generated artifacts out of the skill source tree.
+
+- `VERSION` — project version string (currently `"1.0.0"`).
+- `DEFAULT_OUTPUT_DIR` — `.reddit-skills/` in the cwd.
+- `reports_dir()` / `logs_dir()` / `checkpoints_dir()` / `records_dir()` — subdirectories under the output root, created on demand.
+
 ### src/common/llm.py
 
 Shared LLM client. Reads `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENROUTER_MODEL` from the shell environment.
