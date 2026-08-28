@@ -74,3 +74,23 @@ def test_run_fails_gracefully(tmp_path):
     assert done["success"] is False
     assert "scrape down" in done["error"]
     assert "failed_step" in done
+
+
+def test_run_logs_subreddits_in_run_started(tmp_path):
+    log_path = tmp_path / "run.jsonl"
+
+    def fake_scrape(idea, profile):
+        return []
+
+    events = list(
+        run(
+            "test idea",
+            "fast",
+            log_path=log_path,
+            scrape_fn=fake_scrape,
+            subreddits="IELTS,TOEFL",
+        )
+    )
+
+    assert events[0]["event"] == "run_started"
+    assert events[0]["subreddits"] == "IELTS,TOEFL"

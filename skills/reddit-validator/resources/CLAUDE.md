@@ -47,6 +47,14 @@ The scraper can take 3–30 minutes. Background it and poll a log file:
 cd "<skill_dir>" && nohup python "scripts/run_pipeline.py" "<idea>" --profile standard > "logs/run_$(date +%s).jsonl" 2>&1 &
 ```
 
+To target specific subreddits (when the user already knows where to look):
+
+```bash
+cd "<skill_dir>" && nohup python "scripts/run_pipeline.py" "<idea>" --profile standard --subreddits "IELTS,TOEFL,EnglishLearning" > "logs/run_$(date +%s).jsonl" 2>&1 &
+```
+
+When `--subreddits` is provided, the scraper searches each subreddit individually instead of all of Reddit, producing more targeted results. The `run_started` event will include a `subreddits` field.
+
 Then periodically `Read` the log file to find a `done` event. Parse each line as JSON. Key events:
 
 ```json
