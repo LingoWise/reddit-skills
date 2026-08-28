@@ -22,7 +22,7 @@ Do NOT use for: pure keyword research, SEO tasks, generic LLM brainstorming, or 
 - Python 3.10+.
 - Dependencies installed: `pip install -r <skill_dir>/requirements.txt`.
 - **Reddit access (choose one):**
-  - Playwright browser login (default, no app needed). Set `REDDIT_LOGIN_METHOD=playwright` in `.env`.
+  - Rustwright browser login (default, no app needed). Set `REDDIT_LOGIN_METHOD=rustwright` in `.env`. The browser login is handled by the `reddit-auth` skill.
   - Bearer token or script-app credentials: paste `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` in `.env`. Optional `REDDIT_USERNAME` / `REDDIT_PASSWORD` for PRAW.
 
 ## File layout
@@ -81,12 +81,12 @@ python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 
 This only scrapes; it does not run an LLM. On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4. On `done` with `success:false`, use `recover.py` or `resources/failure-recovery.md`.
 
-When `REDDIT_LOGIN_METHOD=playwright`, a real browser opens and the user must log in to Reddit. The scraper continues once login is detected.
+When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), the `reddit-auth` skill opens a real Chromium window on `https://www.reddit.com`, the user clicks **Log in** and completes the flow, and the scraper continues once `reddit-auth` detects a successful `/api/v1/me` response.
 
 ### Phase 4 — Analyze with the host agent's LLM
 
 1. Read the `records_path` from Phase 3.
-2. Use your own model to produce a structured analysis JSON matching this schema:
+1. Use your own model to produce a structured analysis JSON matching this schema:
 
 ```json
 {
@@ -104,7 +104,7 @@ When `REDDIT_LOGIN_METHOD=playwright`, a real browser opens and the user must lo
 }
 ```
 
-3. Save it as `<skill_dir>/analysis.json` or another path.
+1. Save it as `<skill_dir>/analysis.json` or another path.
 
 ### Phase 5 — Render the report
 

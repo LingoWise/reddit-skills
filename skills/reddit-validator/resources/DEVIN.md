@@ -16,7 +16,7 @@ Read the JSON output and react:
 | ----------- | ------------------------------------------------------------------------------------------------------------ |
 | `env_ok`    | Usually no longer critical; only the user name might be set. Proceed if a Reddit method is available.        |
 | `deps_ok`   | Offer `pip install -r <skill_dir>/requirements.txt`, then re-run preflight                                   |
-| `reddit_ok` | Playwright not installed, or token/PRAW creds wrong. For Playwright, tell the user a browser will open.      |
+| `reddit_ok` | Rustwright not installed, or token/PRAW creds wrong. For Rustwright, tell the user a Chromium window will open. |
 
 Only proceed when `deps_ok` and `reddit_ok` are true.
 
@@ -53,7 +53,7 @@ On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 
 
 On `done` with `success:false`, read `error` and `failed_step`, then jump to Phase 4 / `resources/failure-recovery.md`.
 
-When `REDDIT_LOGIN_METHOD=playwright`, a real browser window opens and the user must log in. The scraper polls for the user menu and continues once detected.
+When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), the `reddit-auth` skill opens a Chromium window on `https://www.reddit.com`. The user clicks **Log in** and completes the flow. `reddit-auth` polls `/api/v1/me` and continues once a real user is detected.
 
 ## Phase 4 — Analyze with Devin's LLM
 

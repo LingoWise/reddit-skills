@@ -1,24 +1,39 @@
-import base64
 import importlib
+import importlib.util
 import json
-import os
+import urllib.parse
+from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 
 
 PUBLIC_BASE = "https://www.reddit.com"
 OAUTH_BASE = "https://oauth.reddit.com"
 
+_auth_module = None
+
+
+def _load_auth():
+    """Load the reddit-auth pipeline module from the sibling skill directory."""
+    global _auth_module
+    if _auth_module is not None:
+        return _auth_module
+    auth_path = Path(__file__).resolve().parent.parent.parent / "reddit-auth" / "pipeline" / "auth.py"
+    spec = importlib.util.spec_from_file_location("reddit_auth_pipeline_auth", auth_path)
+    _auth_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(_auth_module)
+    return _auth_module
+
 
 def _praw_client():
     from praw import Reddit
-    username = os.getenv("REDDIT_USERNAME")
-    password = os.getenv("REDDIT_PASSWORD")
+    auth = _load_auth()
+    username = auth.username()
+    password = auth.password()
     kwargs = {
-        "client_id": os.getenv("REDDIT_CLIENT_ID"),
-        "client_secret": os.getenv("REDDIT_CLIENT_SECRET"),
-        "user_agent": os.getenv("REDDIT_USER_AGENT"),
+        "client_id": auth.client_id(),
+        "client_secret": auth.client_secret(),
+        "user_agent": auth.user_agent(),
     }
     if username and password:
         kwargs["username"] = username
@@ -68,10 +83,6 @@ def _praw_records(submissions, total_posts):
     return records
 
 
-def _user_agent():
-    return os.getenv("REDDIT_USER_AGENT") or "python:reddit-validator:v0.1"
-
-
 def _search_params(idea, limit):
     return {
         "q": idea,
@@ -108,45 +119,6 @@ def _comment_record(post, comment):
         "score": comment.get("score", 0),
         "url": f"https://www.reddit.com{comment.get('permalink', post.get('permalink', ''))}",
         "is_comment": True,
-    }
-
-
-def _bearer_token(secret=None):
-    if secret is None:
-        load_dotenv()
-        secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
-    if not secret:
-        return None
-
-    # Case 1: the value is a base64-encoded JSON object containing an access token.
-    try:
-        padded = secret + "=" * (-len(secret) % 4)
-        data = json.loads(base64.urlsafe_b64decode(padded))
-        token = data.get("accessToken") or data.get("token")
-        if token:
-            return token
-    except Exception:
-        pass
-
-    # Case 2: the value is a JWT whose payload contains an access token.
-    if "." in secret:
-        try:
-            payload = secret.split(".")[1]
-            padded = payload + "=" * (-len(payload) % 4)
-            data = json.loads(base64.urlsafe_b64decode(padded))
-            token = data.get("accessToken") or data.get("token")
-            if token:
-                return token
-        except Exception:
-            pass
-
-    return None
-
-
-def _bearer_headers():
-    return {
-        "Authorization": f"Bearer {_bearer_token()}",
-        "User-Agent": _user_agent(),
     }
 
 
@@ -195,91 +167,75 @@ def _records_from_search(data, total_posts, base, headers):
 
 
 def _public_search(idea, profile):
-    load_dotenv()
-    headers = {"User-Agent": _user_agent()}
+    auth = _load_auth()
+    headers = {"User-Agent": auth.user_agent()}
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
     data = _api_search(idea, total_posts, PUBLIC_BASE, headers)
     return _records_from_search(data, total_posts, PUBLIC_BASE, headers)
 
 
 def _bearer_search(idea, profile):
+    auth = _load_auth()
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-    headers = _bearer_headers()
+    token = auth.bearer_token()
+    if not token:
+        raise RuntimeError("No bearer token could be parsed from REDDIT_CLIENT_SECRET")
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": auth.user_agent()}
     data = _api_search(idea, total_posts, OAUTH_BASE, headers)
     return _records_from_search(data, total_posts, OAUTH_BASE, headers)
 
 
-def _use_bearer():
-    return _bearer_token() is not None
-
-
-def _use_praw():
-    load_dotenv()
-    client_id = os.getenv("REDDIT_CLIENT_ID", "").strip()
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
-    if not client_id or not client_secret:
-        return False
-    if client_id == "your_reddit_app_client_id" or client_secret == "your_reddit_app_client_secret":
-        return False
-    if _use_bearer():
-        return False
-    return True
-
-
-def _use_playwright():
-    load_dotenv()
-    method = os.getenv("REDDIT_LOGIN_METHOD", "").strip().lower()
-    if method == "playwright":
-        return True
-    client_id = os.getenv("REDDIT_CLIENT_ID", "").strip()
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
-    if client_id and client_secret:
-        return False
-    try:
-        importlib.import_module("playwright.sync_api")
-        return True
-    except ImportError:
-        return False
-
-
-def _playwright_search(idea, profile):
-    from playwright.sync_api import sync_playwright
-
+def _praw_search(idea, profile):
+    client = _praw_client()
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(headless=False)
-        except Exception as exc:
-            raise RuntimeError(f"Could not open browser: {exc}") from exc
+    submissions = client.subreddit("all").search(
+        idea,
+        sort="relevance",
+        time_filter="all",
+        limit=total_posts,
+    )
+    return _praw_records(submissions, total_posts)
 
-        context = browser.new_context(viewport={"width": 1280, "height": 800})
-        page = context.new_page()
-        page.goto("https://www.reddit.com/login/", wait_until="networkidle")
 
-        print("A Reddit login window is open. Please log in and wait...")
-        logged_in = False
-        for _ in range(120):  # up to ~5 minutes
-            try:
-                page.wait_for_selector('[data-testid="user-menu-button"]', timeout=2500)
-                logged_in = True
-                break
-            except Exception:
-                pass
-        if not logged_in:
-            browser.close()
-            raise RuntimeError("Reddit login was not completed in time.")
+def _rustwright_search(idea, profile):
+    auth = _load_auth()
+    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
+    session = auth.ensure_authenticated_page(timeout=300)
+    try:
+        page = session.page
+        search_data = auth.fetch_json(
+            page,
+            PUBLIC_BASE,
+            "/search.json",
+            params=_search_params(idea, total_posts),
+        )
+        children = search_data.get("data", {}).get("children", [])[:total_posts]
 
-        print("Login detected. Scraping with your session...")
-        cookies = context.cookies()
-        cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
-        headers = {
-            "User-Agent": _user_agent(),
-            "Cookie": cookie_str,
-        }
-        data = _api_search(idea, total_posts, PUBLIC_BASE, headers)
-        records = _records_from_search(data, total_posts, PUBLIC_BASE, headers)
-        browser.close()
+        records = []
+        for child in children:
+            post = child.get("data", {})
+            if not post:
+                continue
+            records.append(_post_record(post))
+            permalink = post.get("permalink", "")
+            if permalink:
+                try:
+                    comment_data = auth.fetch_json(
+                        page,
+                        PUBLIC_BASE,
+                        f"{permalink}.json",
+                        params={"limit": 3, "sort": "top"},
+                    )
+                    if isinstance(comment_data, list) and len(comment_data) >= 2:
+                        listing = comment_data[1]
+                        for c in listing.get("data", {}).get("children", [])[:3]:
+                            records.append(_comment_record(post, c.get("data", {})))
+                except Exception as exc:
+                    print(f"  comments fetch warning for {permalink}: {exc}", flush=True)
+
         return records
+    finally:
+        session.close()
 
 
 def scrape(idea, profile, client=None):
@@ -293,21 +249,12 @@ def scrape(idea, profile, client=None):
         )
         return _praw_records(submissions, total_posts)
 
-    if _use_playwright():
-        return _playwright_search(idea, profile)
-
-    if _use_bearer():
+    auth = _load_auth()
+    strategy = auth.resolve_strategy()
+    if strategy == "browser":
+        return _rustwright_search(idea, profile)
+    if strategy == "bearer":
         return _bearer_search(idea, profile)
-
-    if _use_praw():
-        client = _praw_client()
-        total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
-        submissions = client.subreddit("all").search(
-            idea,
-            sort="relevance",
-            time_filter="all",
-            limit=total_posts,
-        )
-        return _praw_records(submissions, total_posts)
-
+    if strategy == "praw":
+        return _praw_search(idea, profile)
     return _public_search(idea, profile)
