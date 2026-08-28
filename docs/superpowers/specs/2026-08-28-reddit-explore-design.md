@@ -6,7 +6,7 @@ Build `reddit-explore` as the canonical read layer for all Reddit skills. It own
 
 ## Architecture
 
-```
+```text
 skills/reddit-explore/
 ├── SKILL.md
 ├── requirements.txt
@@ -38,7 +38,7 @@ skills/reddit-explore/
 
 ### Data flow
 
-```
+```text
 Agent / human
    │
    ▼
@@ -462,7 +462,7 @@ Small raw Reddit JSON snippets stored inline in the test files (a post dict, a c
 
 ## requirements.txt
 
-```
+```text
 requests
 python-dotenv
 praw
