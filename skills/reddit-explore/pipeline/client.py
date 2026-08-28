@@ -129,9 +129,10 @@ class Fetcher:
             if sort == "top" and time_filter:
                 kwargs["time_filter"] = time_filter
             results = method(**kwargs)
-            return [{"id": s.id, "title": s.title, "selftext": s.selftext, "subreddit": str(s.subreddit),
-                     "author": str(s.author), "score": s.score, "url": s.url, "permalink": s.permalink}
-                    for s in results]
+            return [s if isinstance(s, dict) else {
+                "id": s.id, "title": s.title, "selftext": s.selftext, "subreddit": str(s.subreddit),
+                "author": str(s.author), "score": s.score, "url": s.url, "permalink": s.permalink,
+            } for s in results]
 
         if self.strategy == "browser":
             data = self._browser_fetch(f"/r/{name}/{sort}", {"limit": min(limit, 100), "t": time_filter})
@@ -150,43 +151,74 @@ class Fetcher:
 
         if self.strategy == "praw":
             submission = self._client.submission(id=post_id)
-            post = {"id": submission.id, "title": submission.title, "selftext": submission.selftext,
-                    "subreddit": str(submission.subreddit), "author": str(submission.author),
-                    "score": submission.score, "url": submission.url, "permalink": submission.permalink}
+            if isinstance(submission, dict):
+                post = submission
+            else:
+                post = {"id": submission.id, "title": submission.title, "selftext": submission.selftext,
+                        "subreddit": str(submission.subreddit), "author": str(submission.author),
+                        "score": submission.score, "url": submission.url, "permalink": submission.permalink}
             comments = []
             if comment_limit:
-                submission.comments.replace_more(limit=0)
-                for c in submission.comments.list()[:comment_limit]:
-                    comments.append({"id": c.id, "body": c.body, "author": str(c.author),
-                                     "score": c.score, "permalink": c.permalink})
+                if isinstance(submission, dict):
+                    raw_comments = submission.get("comments", [])
+                else:
+                    submission.comments.replace_more(limit=0)
+                    raw_comments = submission.comments.list()
+                for c in raw_comments[:comment_limit]:
+                    comments.append(c if isinstance(c, dict) else {
+                        "id": c.id, "body": c.body, "author": str(c.author),
+                        "score": c.score, "permalink": c.permalink,
+                    })
             return post, comments
 
-        if self.strategy == "browser":
-            data = self._browser_fetch(f"/r/placeholder/comments/{post_id}/title")
-            if not isinstance(data, list) or len(data) < 2:
+        def _extract_post(info):
+            posts = self._extract_children(info)
+            if not posts:
                 raise LookupError(f"Could not fetch post {post_id}")
-            post = self._extract_children(data[0])[0]
-            comments = self._extract_children(data[1])[:comment_limit] if comment_limit else []
+            return posts[0]
+
+        if self.strategy == "browser":
+            info = self._browser_fetch("/api/info", {"id": f"t3_{post_id}"})
+            post = _extract_post(info)
+            comments = []
+            if comment_limit:
+                subreddit = self._subreddit_name(post)
+                data = self._browser_fetch(f"/r/{subreddit}/comments/{post_id}/title",
+                                           {"limit": comment_limit, "sort": comment_sort})
+                if isinstance(data, list) and len(data) >= 2:
+                    comments = self._extract_children(data[1])[:comment_limit]
             return post, comments
 
         base = OAUTH_BASE if self.strategy == "bearer" else PUBLIC_BASE
-        data = self._requests_get(f"{base}/r/placeholder/comments/{post_id}/title.json",
-                                  params={"limit": comment_limit, "sort": comment_sort})
-        if not isinstance(data, list) or len(data) < 2:
-            raise LookupError(f"Could not fetch post {post_id}")
-        post = self._extract_children(data[0])[0]
-        comments = self._extract_children(data[1])[:comment_limit] if comment_limit else []
+        info = self._requests_get(f"{base}/api/info.json", params={"id": f"t3_{post_id}"})
+        post = _extract_post(info)
+        comments = []
+        if comment_limit:
+            subreddit = self._subreddit_name(post)
+            data = self._requests_get(f"{base}/r/{subreddit}/comments/{post_id}/title.json",
+                                      params={"limit": comment_limit, "sort": comment_sort})
+            if isinstance(data, list) and len(data) >= 2:
+                comments = self._extract_children(data[1])[:comment_limit]
         return post, comments
 
     def user(self, name, *, section="overview", limit=25, sort="new") -> list[dict]:
         """Return raw item dicts for a user profile section."""
+        praw_section = section
         if section == "overview":
             section = "submitted"
 
         if self.strategy == "praw":
             redditor = self._client.redditor(name)
-            method = redditor.new if sort == "new" else redditor.hot
-            items = method(limit=limit)
+            if praw_section == "overview":
+                listing = redditor.overview
+            elif praw_section == "submitted":
+                listing = redditor.submissions
+            elif praw_section == "comments":
+                listing = redditor.comments
+            else:
+                listing = redditor.overview
+            sort_attr = "new" if sort == "new" else "hot"
+            items = getattr(listing, sort_attr)(limit=limit)
             result = []
             for item in items:
                 if hasattr(item, "link_id"):
@@ -235,6 +267,22 @@ class Fetcher:
                 if idx + 1 < len(parts):
                     return parts[idx + 1]
         return value.lstrip("t3_")
+
+    @staticmethod
+    def _subreddit_name(post: dict) -> str:
+        """Return a URL-safe subreddit display name from a post dict."""
+        sub = post.get("subreddit") or ""
+        if sub.startswith("r/"):
+            sub = sub[2:]
+        if sub:
+            return sub
+        permalink = post.get("permalink") or ""
+        parts = [p for p in permalink.split("/") if p]
+        if "r" in parts:
+            idx = parts.index("r")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        return "placeholder"
 
 
 def get_fetcher() -> Fetcher:
