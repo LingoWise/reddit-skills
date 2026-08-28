@@ -24,6 +24,7 @@ Do NOT use for: pure keyword research, SEO tasks, generic LLM brainstorming, or 
 - **Reddit access (choose one):**
   - Rustwright browser login (default, no app needed). Set `REDDIT_LOGIN_METHOD=rustwright` in `.env`. The browser login is handled by the `reddit-auth` skill.
   - Bearer token or script-app credentials: paste `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` in `.env`. Optional `REDDIT_USERNAME` / `REDDIT_PASSWORD` for PRAW.
+- **Optional AI analysis:** Set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` (and optionally `OPENAI_BASE_URL`) as **shell environment variables** for AI-generated analysis. Do not put these secrets in `.env`. If not set, the host agent provides the analysis manually.
 
 ## File layout
 
@@ -67,9 +68,17 @@ python "<skill_dir>/scripts/preflight.py"
 
 Only proceed when `env_ok && deps_ok && reddit_ok` are all true. See `resources/failure-recovery.md` for common fixes.
 
+If the user wants AI-generated analysis, `preflight` will also report `ai_ok`. When `ai_ok` is false, ask the user to set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` as shell environment variables before continuing.
+
 ### Phase 2 — Pick a profile
 
-Default to **standard**. Choose **fast** for quick smoke tests, **standard** for normal validation, **deep** for high-stakes decisions. See `resources/param-matrix.md` for exact numbers.
+Ask the user to pick a profile if they have not specified one:
+
+- **fast** — quick smoke test (~5 min, 3 subreddits × 5 posts)
+- **standard** — regular validation (~30 min, 5 subreddits × 25 posts)
+- **deep** — high-stakes decisions (~60 min, 10 subreddits × 100 posts)
+
+See `resources/param-matrix.md` for exact numbers. When running `run_pipeline.py` directly without `--profile`, the script will prompt for a profile if the terminal is interactive.
 
 ### Phase 3 — Scrape Reddit
 
@@ -81,20 +90,22 @@ python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 
 This only scrapes; it does not run an LLM. On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4. On `done` with `success:false`, use `recover.py` or `resources/failure-recovery.md`.
 
-When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), the `reddit-auth` skill opens a real Chromium window on `https://www.reddit.com`, the user clicks **Log in** and completes the flow, and the scraper continues once `reddit-auth` detects a successful `/api/v1/me` response.
+When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), `reddit-validator` calls `reddit-auth` to open a real Chromium window on `https://www.reddit.com`. The user clicks **Log in** and completes the flow. `reddit-auth` emits a `login` stage event, then the scraper continues once a successful `/api/v1/me` response is detected.
 
-### Phase 4 — Analyze with the host agent's LLM
+### Phase 4 — Analyze
 
 1. Read the `records_path` from Phase 3.
-1. Use your own model to produce a structured analysis JSON matching this schema:
+1. If `OPENAI_API_KEY` or `OPENROUTER_API_KEY` is configured, use `pipeline/analyzer.py` to generate the analysis JSON. Otherwise, use the host agent's own model to produce the structured JSON matching this schema:
 
 ```json
 {
   "score": 70,
+  "market_snapshot": ["..."],
   "pain_points": [{ "text": "...", "weight": 3 }],
-  "opportunities": [{ "text": "...", "weight": 3 }],
-  "recommendations": ["..."],
   "existing_solutions": ["..."],
+  "opportunities": [{ "text": "...", "weight": 3 }],
+  "how_to_win": ["..."],
+  "recommendations": ["..."],
   "comment_tags": {
     "positive": 5,
     "negative": 3,

@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import time
 import uuid
@@ -8,9 +9,13 @@ from .config import get_profile
 from .paths import checkpoints_dir, logs_dir, reports_dir
 
 
-def _default_scrape(idea, profile):
-    from .scraper import scrape
-    return scrape(idea, profile)
+def _load_auth():
+    """Load the reddit-auth pipeline module from the sibling skill directory."""
+    auth_path = Path(__file__).resolve().parent.parent.parent / "reddit-auth" / "pipeline" / "auth.py"
+    spec = importlib.util.spec_from_file_location("reddit_auth_pipeline_auth", auth_path)
+    auth = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(auth)
+    return auth
 
 
 def _default_analyze(records, idea, profile):
@@ -60,7 +65,18 @@ def run(
         log_path = logs_dir() / f"run_{run_id}.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    scrape_fn = scrape_fn or _default_scrape
+    client = None
+    auth = None
+    is_browser = False
+    if scrape_fn is None:
+        auth = _load_auth()
+        is_browser = auth.resolve_strategy() == "browser"
+
+        def _default_scrape(idea, profile):
+            from .scraper import scrape
+            return scrape(idea, profile, client=client)
+
+        scrape_fn = _default_scrape
 
     start = time.time()
     yield _emit(
@@ -74,18 +90,49 @@ def run(
         },
     )
 
+    if auth is not None and client is None:
+        if is_browser:
+            yield _emit(
+                log_path,
+                _stage_event(
+                    "login",
+                    0.0,
+                    "logging in via reddit-auth",
+                ),
+            )
+
+        client = auth.get_client()
+
+        if is_browser and client is not None and hasattr(client, "page"):
+            username = getattr(client, "username", None) or "unknown"
+            yield _emit(
+                log_path,
+                _stage_event(
+                    "login",
+                    1.0,
+                    f"logged in as {username}",
+                ),
+            )
+
     analysis = None
     report_path = None
     records_path = None
     try:
-        yield _emit(log_path, _stage_event("scrape_data", 0.0, "scraping Reddit"))
-        records = scrape_fn(idea, profile)
-        records_path = checkpoints_dir() / f"{run_id}_records.json"
-        records_path.write_text(json.dumps(records, indent=2, default=str))
-        yield _emit(
-            log_path,
-            _stage_event("scrape_data", 1.0, f"collected {len(records)} records"),
-        )
+        try:
+            yield _emit(log_path, _stage_event("scrape_data", 0.0, "scraping Reddit"))
+            records = scrape_fn(idea, profile)
+            records_path = checkpoints_dir() / f"{run_id}_records.json"
+            records_path.write_text(json.dumps(records, indent=2, default=str))
+            yield _emit(
+                log_path,
+                _stage_event("scrape_data", 1.0, f"collected {len(records)} records"),
+            )
+        finally:
+            if client is not None and hasattr(client, "close"):
+                try:
+                    client.close()
+                except Exception:
+                    pass
 
         if analyze_fn is None:
             elapsed = time.time() - start
@@ -138,8 +185,10 @@ def run(
                 "idea": idea,
                 "report_path": report_path,
                 "score": analysis.get("score", 0),
+                "market_snapshot": analysis.get("market_snapshot", [])[:5],
                 "pain_points": analysis.get("pain_points", [])[:3],
                 "opportunities": analysis.get("opportunities", [])[:3],
+                "how_to_win": analysis.get("how_to_win", [])[:3],
                 "execution_time": round(elapsed, 2),
             },
         )

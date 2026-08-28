@@ -4,6 +4,35 @@
 
 A modular collection of Reddit operation skills for AI agents. Each skill is a self-contained folder under `skills/<skill-name>/` with a `SKILL.md` contract, `requirements.txt`, optional `resources/` guides, and a Python `pipeline/` + `scripts/` implementation.
 
+## Shared libraries
+
+Cross-skill code lives in `src/common/` at the project root. Skills load these modules via `importlib.util.spec_from_file_location` with a path relative to `__file__` (same pattern used for sibling-skill imports like `reddit-auth`).
+
+### src/common/llm.py
+
+Shared LLM client. Reads `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENROUTER_MODEL` from the shell environment.
+
+- `client()` — returns an `OpenAI` client.
+- `model()` — returns the model name for the active provider.
+- `available()` — `(ok, message)` check for preflight.
+- `chat_json(messages, model_name=None, temperature=0.2, client_obj=None)` — call the LLM and return parsed JSON (strips markdown fences).
+
+To use from a skill:
+
+```python
+import importlib.util
+from pathlib import Path
+
+def _load_llm():
+    llm_path = Path(__file__).resolve().parent.parent.parent.parent / "src" / "common" / "llm.py"
+    spec = importlib.util.spec_from_file_location("reddit_skills_common_llm", llm_path)
+    llm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(llm)
+    return llm
+```
+
+The exact number of `.parent` calls depends on the file's depth: from `pipeline/foo.py` or `scripts/foo.py` it's 4 levels up to the project root.
+
 ## reddit-auth
 
 Authentication and session management for all Reddit skills. Use it to log in via Rustwright, refresh a saved session, or validate credentials.

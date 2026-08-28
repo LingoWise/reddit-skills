@@ -88,8 +88,10 @@ def main(argv=None):
         "idea": idea,
         "report_path": report_path,
         "score": analysis.get("score", 0),
+        "market_snapshot": analysis.get("market_snapshot", [])[:5],
         "pain_points": analysis.get("pain_points", [])[:3],
         "opportunities": analysis.get("opportunities", [])[:3],
+        "how_to_win": analysis.get("how_to_win", [])[:3],
     }
     with open(log_path, "a") as f:
         f.write(json.dumps(done_event) + "\n")
