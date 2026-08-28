@@ -1,0 +1,4 @@
+rustwright
+python-dotenv
+requests
+praw

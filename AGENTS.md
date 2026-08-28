@@ -4,6 +4,28 @@
 
 A modular collection of Reddit operation skills for AI agents. Each skill is a self-contained folder under `skills/<skill-name>/` with a `SKILL.md` contract, `requirements.txt`, optional `resources/` guides, and a Python `pipeline/` + `scripts/` implementation.
 
+## reddit-auth
+
+Authentication and session management for all Reddit skills. Use it to log in via Rustwright, refresh a saved session, or validate credentials.
+
+### Where it lives
+
+- Source package: `skills/reddit-auth/`
+- Devin discovery symlink: `.devin/skills/reddit-auth -> ../../skills/reddit-auth`
+
+### Setup
+
+```bash
+uv pip install -r skills/reddit-auth/requirements.txt
+```
+
+### Run
+
+```bash
+python skills/reddit-auth/scripts/preflight.py
+python skills/reddit-auth/scripts/login.py
+```
+
 ## reddit-validator
 
 The first skill. It validates a business idea by scraping Reddit discussions and producing a scored HTML report via LLM analysis.
@@ -22,7 +44,7 @@ uv pip install -r skills/reddit-validator/requirements.txt
 uv pip install pytest  # dev dependency
 ```
 
-Copy `skills/reddit-validator/.env.example` to `.env` and fill in the Reddit script-app credentials. `OPENAI_API_KEY` can come from the Devin / Claude Code runtime; dotenv does not overwrite existing environment variables.
+Copy `skills/reddit-validator/.env.example` or `skills/reddit-auth/.env.example` to `.env` and fill in the Reddit credentials. For browser login, set `REDDIT_LOGIN_METHOD=rustwright`. `OPENAI_API_KEY` can come from the Devin / Claude Code runtime; dotenv does not overwrite existing environment variables.
 
 ### Run
 

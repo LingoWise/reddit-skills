@@ -1,6 +1,5 @@
 import json
 import os
-import praw
 
 import pytest
 
@@ -40,54 +39,33 @@ class TestCheckDeps:
         assert failed == ["not_a_real_package_12345"]
 
 
-class FakeSearch:
-    def __init__(self, fail=False):
-        self._fail = fail
+class FakeAuth:
+    def __init__(self, ok=True, message="ok"):
+        self._ok = ok
+        self._message = message
 
-    def search(self, *args, **kwargs):
-        if self._fail:
-            raise Exception("401")
-        return [type("Submission", (), {"id": "p1"})]
-
-
-class FakeSubreddit:
-    def __init__(self, fail=False):
-        self._fail = fail
-
-    def search(self, *args, **kwargs):
-        if self._fail:
-            raise Exception("401")
-        return [type("Submission", (), {"id": "p1"})]
-
-
-class FakeReddit:
-    def __init__(self, fail=False):
-        self._fail = fail
-
-    def subreddit(self, name):
-        return FakeSubreddit(self._fail)
+    def validate_credentials(self):
+        return self._ok, self._message
 
 
 class TestCheckReddit:
     def test_ok(self, monkeypatch):
-        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: False)
-        monkeypatch.setattr(praw, "Reddit", lambda **_: FakeReddit())
+        monkeypatch.setattr("scripts.preflight._load_auth", lambda: FakeAuth(ok=True, message="rustwright browser login available"))
         ok, message = check_reddit("id", "secret", "agent")
         assert ok is True
-        assert "authenticated" in message
+        assert "rustwright" in message
 
     def test_auth_fails(self, monkeypatch):
-        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: False)
-        monkeypatch.setattr(praw, "Reddit", lambda **_: FakeReddit(fail=True))
+        monkeypatch.setattr("scripts.preflight._load_auth", lambda: FakeAuth(ok=False, message="bearer token failed: 401"))
         ok, message = check_reddit("id", "secret", "agent")
         assert ok is False
         assert "401" in message
 
-    def test_playwright(self, monkeypatch):
-        monkeypatch.setattr("scripts.preflight._use_playwright", lambda: True)
+    def test_browser(self, monkeypatch):
+        monkeypatch.setattr("scripts.preflight._load_auth", lambda: FakeAuth(ok=True, message="rustwright browser login available"))
         ok, message = check_reddit("", "", "")
         assert ok is True
-        assert "playwright" in message
+        assert "rustwright" in message
 
 
 class TestPreflight:

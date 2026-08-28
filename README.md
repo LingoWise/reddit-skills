@@ -1,6 +1,6 @@
 # Reddit Skills
 
-A modular collection of Reddit operation skills for AI agents. Each skill uses **Python + Playwright** to browse Reddit like a human and exposes a clean tool interface through **MCP**, so you can automate discovery, publishing, interaction, and validation to operate a brand or product on Reddit.
+A modular collection of Reddit operation skills for AI agents. Each skill uses **Python + Rustwright** to browse Reddit like a human and exposes a clean tool interface through **MCP**, so you can automate discovery, publishing, interaction, and validation to operate a brand or product on Reddit.
 
 ## Why this exists
 
@@ -24,8 +24,8 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 
 | Skill | Status | Description | Core Capabilities |
 | --- | --- | --- | --- |
+| reddit-auth | Spec complete | Authentication and session management | Login check, session refresh, credential hygiene |
 | reddit-validator | Spec complete | Idea validation via Reddit scraping and LLM analysis | Search, scrape, multi-agent analysis, scored HTML report |
-| reddit-auth | Planned | Authentication and session management | Login check, session refresh, credential hygiene |
 | reddit-explore | Planned | Discovery and research | Search, subreddit browsing, post details, user profiles |
 | reddit-publish | Planned | Content publishing | Text, link, and image post submission |
 | reddit-interact | Planned | Social interaction | Comment, reply, upvote, downvote, save |
@@ -33,7 +33,7 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 
 ## How it works
 
-1. **Browser layer**: Playwright drives a real browser, with human-like delays, scrolls, and clicks to avoid bot detection.
+1. **Browser layer**: Rustwright drives a real Chromium browser, with human-like delays, scrolls, and clicks to avoid bot detection.
 2. **Skill layer**: Each skill is a self-contained module with a `SKILL.md` contract and a `pipeline/` of Python scripts.
 3. **MCP layer**: Skills expose entrypoints an AI agent can call, returning JSON or rendered reports.
 4. **Orchestration layer**: The agent composes skills into workflows — for example, validate an idea, then publish a post, then track replies.
@@ -53,7 +53,7 @@ The first skill, `reddit-validator`, has a complete spec in `skills/reddit-valid
 
 1. Create `skills/<skill-name>/`.
 2. Write a `SKILL.md` describing purpose, prerequisites, workflow, error recovery, and operating principles.
-3. Implement the `pipeline/` in Python, using Playwright for browser work.
+3. Implement the `pipeline/` in Python, using Rustwright for browser work.
 4. Add `requirements.txt` and preflight checks.
 5. Expose an MCP-friendly entrypoint.
 

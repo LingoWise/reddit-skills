@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import json
 import os
 import sys
@@ -7,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
+from dotenv import load_dotenv
 
 
 REQUIRED_ENV = []
@@ -15,15 +17,24 @@ REQUIRED_DEPS = [
     "dotenv",
     "jinja2",
     "requests",
+    "rustwright",
+    "praw",
 ]
 
 
 def _load_dotenv():
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
+    load_dotenv()
+    root_dotenv = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+    if root_dotenv.exists():
+        load_dotenv(root_dotenv, override=True)
+
+
+def _load_auth():
+    auth_path = Path(__file__).resolve().parent.parent.parent / "reddit-auth" / "pipeline" / "auth.py"
+    spec = importlib.util.spec_from_file_location("reddit_auth_pipeline_auth", auth_path)
+    auth = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(auth)
+    return auth
 
 
 def check_env(required=None):
@@ -45,87 +56,9 @@ def check_deps(dependency_names=None):
     return (len(failed) == 0, failed)
 
 
-def _has_reddit_creds(client_id, client_secret):
-    client_id = (client_id or "").strip()
-    client_secret = (client_secret or "").strip()
-    if not client_id or not client_secret:
-        return False
-    if client_id == "your_reddit_app_client_id" or client_secret == "your_reddit_app_client_secret":
-        return False
-    return True
-
-
-def _bearer_token(client_secret=None):
-    try:
-        from pipeline.scraper import _bearer_token as scraper_bearer
-        return scraper_bearer(client_secret)
-    except Exception:
-        return None
-
-
-def _use_playwright():
-    try:
-        from pipeline.scraper import _use_playwright as scraper_use
-        return scraper_use()
-    except Exception:
-        return False
-
-
 def check_reddit(client_id, client_secret, user_agent):
-    if _use_playwright():
-        try:
-            importlib.import_module("playwright.sync_api")
-            return True, "playwright login configured"
-        except ImportError:
-            return False, "playwright not installed"
-
-    token = _bearer_token(client_secret)
-    if token:
-        try:
-            response = requests.get(
-                "https://oauth.reddit.com/r/all/search",
-                headers={"Authorization": f"Bearer {token}", "User-Agent": user_agent or "python:reddit-validator:v0.1"},
-                params={"q": "test", "limit": 1},
-                timeout=15,
-            )
-            response.raise_for_status()
-            return True, "bearer token works"
-        except Exception as exc:
-            return False, f"Bearer token failed: {exc}"
-
-    if _has_reddit_creds(client_id, client_secret):
-        try:
-            from praw import Reddit
-            kwargs = {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "user_agent": user_agent,
-            }
-            username = os.getenv("REDDIT_USERNAME")
-            password = os.getenv("REDDIT_PASSWORD")
-            if username and password:
-                kwargs["username"] = username
-                kwargs["password"] = password
-            reddit = Reddit(**kwargs)
-            list(reddit.subreddit("all").search("test", limit=1))
-            return True, "authenticated"
-        except ImportError:
-            return False, "praw not installed"
-        except Exception as exc:
-            return False, f"Reddit auth failed: {exc}"
-
-    user_agent = user_agent or "python:reddit-validator:v0.1"
-    try:
-        response = requests.get(
-            "https://www.reddit.com/search.json",
-            headers={"User-Agent": user_agent},
-            params={"q": "test", "limit": 1},
-            timeout=15,
-        )
-        response.raise_for_status()
-        return True, "public search works"
-    except Exception as exc:
-        return False, f"Public search failed: {exc}"
+    auth = _load_auth()
+    return auth.validate_credentials()
 
 
 def preflight():
