@@ -2,3 +2,4 @@ requests
 python-dotenv
 praw
 jinja2
+playwright

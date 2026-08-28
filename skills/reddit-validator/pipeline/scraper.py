@@ -1,4 +1,5 @@
 import base64
+import importlib
 import json
 import os
 
@@ -225,6 +226,62 @@ def _use_praw():
     return True
 
 
+def _use_playwright():
+    load_dotenv()
+    method = os.getenv("REDDIT_LOGIN_METHOD", "").strip().lower()
+    if method == "playwright":
+        return True
+    client_id = os.getenv("REDDIT_CLIENT_ID", "").strip()
+    client_secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
+    if client_id and client_secret:
+        return False
+    try:
+        importlib.import_module("playwright.sync_api")
+        return True
+    except ImportError:
+        return False
+
+
+def _playwright_search(idea, profile):
+    from playwright.sync_api import sync_playwright
+
+    total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(headless=False)
+        except Exception as exc:
+            raise RuntimeError(f"Could not open browser: {exc}") from exc
+
+        context = browser.new_context(viewport={"width": 1280, "height": 800})
+        page = context.new_page()
+        page.goto("https://www.reddit.com/login/", wait_until="networkidle")
+
+        print("A Reddit login window is open. Please log in and wait...")
+        logged_in = False
+        for _ in range(120):  # up to ~5 minutes
+            try:
+                page.wait_for_selector('[data-testid="user-menu-button"]', timeout=2500)
+                logged_in = True
+                break
+            except Exception:
+                pass
+        if not logged_in:
+            browser.close()
+            raise RuntimeError("Reddit login was not completed in time.")
+
+        print("Login detected. Scraping with your session...")
+        cookies = context.cookies()
+        cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+        headers = {
+            "User-Agent": _user_agent(),
+            "Cookie": cookie_str,
+        }
+        data = _api_search(idea, total_posts, PUBLIC_BASE, headers)
+        records = _records_from_search(data, total_posts, PUBLIC_BASE, headers)
+        browser.close()
+        return records
+
+
 def scrape(idea, profile, client=None):
     if client is not None:
         total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
@@ -235,6 +292,9 @@ def scrape(idea, profile, client=None):
             limit=total_posts,
         )
         return _praw_records(submissions, total_posts)
+
+    if _use_playwright():
+        return _playwright_search(idea, profile)
 
     if _use_bearer():
         return _bearer_search(idea, profile)
