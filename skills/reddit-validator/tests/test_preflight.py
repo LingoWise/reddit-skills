@@ -57,7 +57,7 @@ class TestCheckReddit:
         monkeypatch.setattr(praw, "Reddit", lambda **_: FakeReddit())
         ok, message = check_reddit("id", "secret", "agent")
         assert ok is True
-        assert message == ""
+        assert "authenticated" in message
 
     def test_auth_fails(self, monkeypatch):
         def boom(**_):

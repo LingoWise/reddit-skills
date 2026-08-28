@@ -4,22 +4,20 @@ import os
 import sys
 from pathlib import Path
 
+import requests
+
 
 REQUIRED_ENV = [
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
-    "REDDIT_CLIENT_ID",
-    "REDDIT_CLIENT_SECRET",
-    "REDDIT_USER_AGENT",
 ]
 
 REQUIRED_DEPS = [
-    "playwright",
     "openai",
     "dotenv",
-    "praw",
     "jinja2",
+    "requests",
 ]
 
 
@@ -50,20 +48,44 @@ def check_deps(dependency_names=None):
     return (len(failed) == 0, failed)
 
 
+def _has_reddit_creds(client_id, client_secret):
+    client_id = (client_id or "").strip()
+    client_secret = (client_secret or "").strip()
+    if not client_id or not client_secret:
+        return False
+    if client_id == "your_reddit_app_client_id" or client_secret == "your_reddit_app_client_secret":
+        return False
+    return True
+
+
 def check_reddit(client_id, client_secret, user_agent):
+    if _has_reddit_creds(client_id, client_secret):
+        try:
+            from praw import Reddit
+            reddit = Reddit(
+                client_id=client_id,
+                client_secret=client_secret,
+                user_agent=user_agent,
+            )
+            _ = reddit.user.me()
+            return True, "authenticated"
+        except ImportError:
+            return False, "praw not installed"
+        except Exception as exc:
+            return False, f"Reddit auth failed: {exc}"
+
+    user_agent = user_agent or "python:reddit-validator:v0.1"
     try:
-        from praw import Reddit
-        reddit = Reddit(
-            client_id=client_id,
-            client_secret=client_secret,
-            user_agent=user_agent,
+        response = requests.get(
+            "https://www.reddit.com/search.json",
+            headers={"User-Agent": user_agent},
+            params={"q": "test", "limit": 1},
+            timeout=15,
         )
-        _ = reddit.user.me()
-        return True, ""
-    except ImportError:
-        return False, "praw not installed"
+        response.raise_for_status()
+        return True, "public search works"
     except Exception as exc:
-        return False, f"Reddit auth failed: {exc}"
+        return False, f"Public search failed: {exc}"
 
 
 def check_llm(api_key, base_url, model):
