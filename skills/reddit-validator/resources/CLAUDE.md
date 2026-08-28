@@ -21,6 +21,8 @@ Read the JSON output and react:
 
 Only proceed when all are true.
 
+If `OPENAI_API_KEY` is missing, check whether Claude Code already has it in the process environment. `dotenv` does not overwrite existing environment variables, so an empty `.env` value will not shadow a key provided by the runtime. If the runtime has the key, do not ask the user for it. Always ask the user for the three Reddit credentials if they are missing.
+
 ## Phase 2 — Pick a profile
 
 Default to **standard**. If the user hasn't specified, ask them to choose. Signals:

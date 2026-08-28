@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# reddit-validator runtime outputs
+skills/reddit-validator/reports/
+skills/reddit-validator/logs/
+skills/reddit-validator/checkpoints/
+
