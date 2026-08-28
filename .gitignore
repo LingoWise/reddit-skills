@@ -223,4 +223,6 @@ __marimo__/
 skills/**/reports/
 skills/**/logs/
 skills/**/checkpoints/
+skills/**/records/
+skills/reddit-validator/analysis.json
 
