@@ -88,6 +88,14 @@ Launch the scraper and poll its structured JSONL output:
 python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 ```
 
+To target specific subreddits (when the user already knows where to look):
+
+```bash
+python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard --subreddits "IELTS,TOEFL,EnglishLearning"
+```
+
+When `--subreddits` is provided, the scraper searches each subreddit individually (`/r/{subreddit}/search`) instead of `/r/all/search`, collecting `posts_per_subreddit` posts per subreddit. This produces more targeted results. If omitted, it falls back to searching all of Reddit.
+
 This only scrapes; it does not run an LLM. On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4. On `done` with `success:false`, use `recover.py` or `resources/failure-recovery.md`.
 
 When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), `reddit-validator` calls `reddit-auth` to open a real Chromium window on `https://www.reddit.com`. The user clicks **Log in** and completes the flow. `reddit-auth` emits a `login` stage event, then the scraper continues once a successful `/api/v1/me` response is detected.

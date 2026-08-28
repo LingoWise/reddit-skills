@@ -92,6 +92,15 @@ def _search_params(idea, limit):
     }
 
 
+def _normalize_subreddits(subreddits):
+    """Accept 'IELTS', 'r/IELTS', ' IELTS,TOEFL ' → ['IELTS', 'TOEFL']."""
+    if not subreddits:
+        return []
+    if isinstance(subreddits, str):
+        subreddits = subreddits.split(",")
+    return [s.strip().lstrip("r/").strip() for s in subreddits if s.strip()]
+
+
 def _post_record(post):
     return {
         "id": post.get("id"),
@@ -157,7 +166,7 @@ def _api_comments(post, base, session=None):
     return [child.get("data", {}) for child in children if child.get("data")]
 
 
-def _api_search(idea, limit, base, session=None):
+def _api_search(idea, limit, base, session=None, subreddit=None):
     if session is None:
         session = requests
 
@@ -175,8 +184,9 @@ def _api_search(idea, limit, base, session=None):
         else:
             headers = {"User-Agent": auth.user_agent()}
 
+    search_path = f"/r/{subreddit}/search" if subreddit else "/r/all/search"
     response = session.get(
-        f"{base}/r/all/search",
+        f"{base}{search_path}",
         headers=headers,
         params=_search_params(idea, limit),
         timeout=15,
@@ -198,21 +208,29 @@ def _records_from_search(data, total_posts, base, session=None):
     return records
 
 
-def _requests_search(idea, profile, session, base):
+def _requests_search(idea, profile, session, base, subreddits=None):
+    subs = _normalize_subreddits(subreddits)
+    if subs:
+        per_sub = max(1, profile.get("posts_per_subreddit", 25))
+        all_records = []
+        for sub in subs:
+            data = _api_search(idea, per_sub, base, session=session, subreddit=sub)
+            all_records.extend(_records_from_search(data, per_sub, base, session=session))
+        return all_records
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
     data = _api_search(idea, total_posts, base, session=session)
     return _records_from_search(data, total_posts, base, session=session)
 
 
-def _public_search(idea, profile, session=None):
+def _public_search(idea, profile, session=None, subreddits=None):
     if session is None:
         auth = _load_auth()
         session = requests.Session()
         session.headers.update({"User-Agent": auth.user_agent()})
-    return _requests_search(idea, profile, session=session, base=PUBLIC_BASE)
+    return _requests_search(idea, profile, session=session, base=PUBLIC_BASE, subreddits=subreddits)
 
 
-def _bearer_search(idea, profile, session=None):
+def _bearer_search(idea, profile, session=None, subreddits=None):
     auth = _load_auth()
     if session is None:
         session = requests.Session()
@@ -223,12 +241,22 @@ def _bearer_search(idea, profile, session=None):
             "Authorization": f"Bearer {token}",
             "User-Agent": auth.user_agent(),
         })
-    return _requests_search(idea, profile, session=session, base=OAUTH_BASE)
+    return _requests_search(idea, profile, session=session, base=OAUTH_BASE, subreddits=subreddits)
 
 
-def _praw_search(idea, profile, client=None):
+def _praw_search(idea, profile, client=None, subreddits=None):
     if client is None:
         client = _praw_client()
+    subs = _normalize_subreddits(subreddits)
+    if subs:
+        per_sub = max(1, profile.get("posts_per_subreddit", 25))
+        all_records = []
+        for sub in subs:
+            submissions = client.subreddit(sub).search(
+                idea, sort="relevance", time_filter="all", limit=per_sub,
+            )
+            all_records.extend(_praw_records(submissions, per_sub))
+        return all_records
     total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
     submissions = client.subreddit("all").search(
         idea,
@@ -239,12 +267,47 @@ def _praw_search(idea, profile, client=None):
     return _praw_records(submissions, total_posts)
 
 
-def _rustwright_search(idea, profile, session=None):
+def _rustwright_search(idea, profile, session=None, subreddits=None):
     auth = _load_auth()
     close_session = session is None
     if close_session:
         session = auth.ensure_authenticated_page(timeout=300)
     try:
+        subs = _normalize_subreddits(subreddits)
+        if subs:
+            per_sub = max(1, profile.get("posts_per_subreddit", 25))
+            all_records = []
+            for sub in subs:
+                search_path = f"/r/{sub}/search.json"
+                search_data = auth.fetch_json(
+                    session.page,
+                    PUBLIC_BASE,
+                    search_path,
+                    params=_search_params(idea, per_sub),
+                )
+                children = search_data.get("data", {}).get("children", [])[:per_sub]
+                for child in children:
+                    post = child.get("data", {})
+                    if not post:
+                        continue
+                    all_records.append(_post_record(post))
+                    permalink = post.get("permalink", "")
+                    if permalink:
+                        try:
+                            comment_data = auth.fetch_json(
+                                session.page,
+                                PUBLIC_BASE,
+                                f"{permalink}.json",
+                                params={"limit": 3, "sort": "top"},
+                            )
+                            if isinstance(comment_data, list) and len(comment_data) >= 2:
+                                listing = comment_data[1]
+                                for c in listing.get("data", {}).get("children", [])[:3]:
+                                    all_records.append(_comment_record(post, c.get("data", {})))
+                        except Exception as exc:
+                            print(f"  comments fetch warning for {permalink}: {exc}", flush=True)
+            return all_records
+
         total_posts = profile.get("subreddits", 5) * profile.get("posts_per_subreddit", 25)
         page = session.page
         search_data = auth.fetch_json(
@@ -283,21 +346,21 @@ def _rustwright_search(idea, profile, session=None):
             session.close()
 
 
-def scrape(idea, profile, client=None):
+def scrape(idea, profile, client=None, subreddits=None):
     if client is not None:
         if hasattr(client, "page"):
-            return _rustwright_search(idea, profile, session=client)
+            return _rustwright_search(idea, profile, session=client, subreddits=subreddits)
         if hasattr(client, "subreddit"):
-            return _praw_search(idea, profile, client=client)
+            return _praw_search(idea, profile, client=client, subreddits=subreddits)
         base = OAUTH_BASE if client.headers.get("Authorization") else PUBLIC_BASE
-        return _requests_search(idea, profile, session=client, base=base)
+        return _requests_search(idea, profile, session=client, base=base, subreddits=subreddits)
 
     auth = _load_auth()
     strategy = auth.resolve_strategy()
     if strategy == "browser":
-        return _rustwright_search(idea, profile)
+        return _rustwright_search(idea, profile, subreddits=subreddits)
     if strategy == "bearer":
-        return _bearer_search(idea, profile)
+        return _bearer_search(idea, profile, subreddits=subreddits)
     if strategy == "praw":
-        return _praw_search(idea, profile)
-    return _public_search(idea, profile)
+        return _praw_search(idea, profile, subreddits=subreddits)
+    return _public_search(idea, profile, subreddits=subreddits)

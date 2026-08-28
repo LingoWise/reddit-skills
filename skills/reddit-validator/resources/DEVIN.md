@@ -58,6 +58,14 @@ Command:
 python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 ```
 
+To target specific subreddits (when the user already knows where to look):
+
+```bash
+python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard --subreddits "IELTS,TOEFL,EnglishLearning"
+```
+
+When `--subreddits` is provided, the scraper searches each subreddit individually instead of all of Reddit, producing more targeted results. The `run_started` event will include a `subreddits` field.
+
 On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4.
 
 On `done` with `success:false`, read `error` and `failed_step`, then jump to Phase 4 / `resources/failure-recovery.md`.

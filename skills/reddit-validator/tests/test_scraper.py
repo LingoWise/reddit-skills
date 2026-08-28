@@ -43,8 +43,9 @@ class FakeSubmission:
 
 
 class FakeSubreddit:
-    def __init__(self, submissions):
+    def __init__(self, submissions, name="all"):
         self._submissions = submissions
+        self.name = name
 
     def search(self, idea, sort=None, time_filter=None, limit=None):
         return self._submissions[:limit]
@@ -53,9 +54,11 @@ class FakeSubreddit:
 class FakeReddit:
     def __init__(self, submissions):
         self._submissions = submissions
+        self.searched_subs = []
 
     def subreddit(self, name):
-        return FakeSubreddit(self._submissions)
+        self.searched_subs.append(name)
+        return FakeSubreddit(self._submissions, name=name)
 
 
 def test_scrape_returns_comment_records():
@@ -74,3 +77,48 @@ def test_scrape_returns_comment_records():
     assert records[0]["text"] == "I need this so much"
     assert records[0]["subreddit"] == "test"
     assert records[1]["is_comment"] is False
+
+
+def test_scrape_targets_specific_subreddits():
+    """When subreddits are specified, the scraper searches each one individually."""
+    submission = FakeSubmission(
+        title="IELTS speaking practice",
+        body="Need feedback on my speaking",
+        comments=[FakeComment("I struggle with fluency", "u1", 3)],
+    )
+    client = FakeReddit([submission])
+
+    records = scrape(
+        "AI IELTS grading",
+        {"posts_per_subreddit": 5},
+        client=client,
+        subreddits="IELTS,TOEFL",
+    )
+
+    # Should have searched two specific subreddits, not "all"
+    assert client.searched_subs == ["IELTS", "TOEFL"]
+    # Each sub returns 1 post + 1 comment = 2 records, 2 subs = 4 records
+    assert len(records) == 4
+    assert all(r["subreddit"] == "test" for r in records)  # FakeSubreddit always returns "test"
+
+
+def test_scrape_without_subreddits_searches_all():
+    """Without subreddits, the scraper falls back to /r/all search."""
+    submission = FakeSubmission(title="test", body="body")
+    client = FakeReddit([submission])
+
+    scrape("test idea", {"subreddits": 1, "posts_per_subreddit": 1}, client=client)
+
+    assert client.searched_subs == ["all"]
+
+
+def test_normalize_subreddits():
+    from pipeline.scraper import _normalize_subreddits
+
+    assert _normalize_subreddits(None) == []
+    assert _normalize_subreddits("") == []
+    assert _normalize_subreddits("IELTS") == ["IELTS"]
+    assert _normalize_subreddits("r/IELTS") == ["IELTS"]
+    assert _normalize_subreddits("IELTS, TOEFL") == ["IELTS", "TOEFL"]
+    assert _normalize_subreddits(["IELTS", "TOEFL"]) == ["IELTS", "TOEFL"]
+    assert _normalize_subreddits(["r/IELTS", " TOEFL "]) == ["IELTS", "TOEFL"]

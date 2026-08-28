@@ -57,6 +57,7 @@ def run(
     scrape_fn=None,
     analyze_fn=_default_analyze,
     report_fn=_default_report,
+    subreddits=None,
 ):
     profile = get_profile(profile_name)
     if run_id is None:
@@ -74,21 +75,21 @@ def run(
 
         def _default_scrape(idea, profile):
             from .scraper import scrape
-            return scrape(idea, profile, client=client)
+            return scrape(idea, profile, client=client, subreddits=subreddits)
 
         scrape_fn = _default_scrape
 
     start = time.time()
-    yield _emit(
-        log_path,
-        {
-            "event": "run_started",
-            "run_id": run_id,
-            "profile": profile_name,
-            "idea": idea,
-            "timestamp": datetime.utcnow().isoformat(),
-        },
-    )
+    run_started = {
+        "event": "run_started",
+        "run_id": run_id,
+        "profile": profile_name,
+        "idea": idea,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    if subreddits:
+        run_started["subreddits"] = subreddits
+    yield _emit(log_path, run_started)
 
     if auth is not None and client is None:
         if is_browser:
