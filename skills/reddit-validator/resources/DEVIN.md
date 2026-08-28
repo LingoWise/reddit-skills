@@ -14,14 +14,13 @@ Read the JSON output and react:
 
 | Field       | On false                                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `env_ok`    | List the missing keys from `missing[]`, tell user to create `.env` in cwd or at `<skill_dir>/.env`, **STOP** |
+| `env_ok`    | Usually no longer critical; only the user name might be set. Proceed if a Reddit method is available.        |
 | `deps_ok`   | Offer `pip install -r <skill_dir>/requirements.txt`, then re-run preflight                                   |
-| `reddit_ok` | Likely wrong app type — tell user to verify Reddit app is "script" type at <https://www.reddit.com/prefs/apps> |
-| `llm_ok`    | Check `OPENAI_BASE_URL` ends with `/v1`; check API quota/billing                                             |
+| `reddit_ok` | Playwright not installed, or token/PRAW creds wrong. For Playwright, tell the user a browser will open.      |
 
-Only proceed when all are true.
+Only proceed when `deps_ok` and `reddit_ok` are true.
 
-If `OPENAI_API_KEY` is missing, check whether Devin already has it in the process environment. `dotenv` does not overwrite existing environment variables, so an empty `.env` value will not shadow a key provided by the runtime. If the runtime has the key, do not ask the user for it. Always ask the user for the three Reddit credentials if they are missing.
+The skill does **not** require an external LLM provider. The agent (Devin) supplies the analysis in Phase 4.
 
 ## Phase 2 — Pick a profile
 
@@ -33,7 +32,7 @@ Default to **standard**. If the user hasn't specified, use `AskUserQuestion` to 
 
 See `resources/param-matrix.md` for exact numbers.
 
-## Phase 3 — Run the pipeline
+## Phase 3 — Scrape Reddit
 
 Use the Bash tool with `run_in_background: true`, then poll output with `TaskOutput`. Each line is JSON; key events:
 
@@ -41,7 +40,7 @@ Use the Bash tool with `run_in_background: true`, then poll output with `TaskOut
 {"event":"run_started","run_id":"...","profile":"standard","idea":"..."}
 {"event":"stage","step":"scrape_data","progress":0.0,"message":"..."}
 ...
-{"event":"done","success":true,"report_path":"...","score":72,"run_id":"...","execution_time":187.4}
+{"event":"done","success":true,"needs_analysis":true,"records_path":"...","run_id":"..."}
 ```
 
 Command:
@@ -50,27 +49,27 @@ Command:
 python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 ```
 
-On `done` with `success:true`, go to Phase 5.
+On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4.
 
 On `done` with `success:false`, read `error` and `failed_step`, then jump to Phase 4 / `resources/failure-recovery.md`.
 
-## Phase 4 — Recover from failure
+When `REDDIT_LOGIN_METHOD=playwright`, a real browser window opens and the user must log in. The scraper polls for the user menu and continues once detected.
 
-Resume:
+## Phase 4 — Analyze with Devin's LLM
+
+1. Read `records_path`.
+2. Use Devin's own model to analyze the Reddit corpus and produce the structured analysis schema described in `SKILL.md`.
+3. Save it to a JSON file (e.g. `<skill_dir>/analysis.json`).
+
+## Phase 5 — Render the report
 
 ```bash
-python "<skill_dir>/scripts/recover.py" --resume-last --idea "<idea>" --profile standard
+python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>"
 ```
 
-Inspect:
+This appends the final `done` event to the log and writes the HTML report.
 
-```bash
-python "<skill_dir>/scripts/recover.py" --list
-python "<skill_dir>/scripts/recover.py" --list --idea "<idea>"
-python "<skill_dir>/scripts/recover.py" --show <run_id>
-```
-
-## Phase 5 — Surface results
+## Phase 6 — Surface results
 
 Extract:
 

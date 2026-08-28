@@ -3,9 +3,9 @@ name: reddit-validator
 description: Use when the user wants to validate a business idea, product, or niche using Reddit discussions and get a scored HTML report.
 ---
 
-# Reddit Validator: for Creative or Business Idea
+# Reddit Validator
 
-Validate a business idea by scraping Reddit posts and comments, then running a multi-agent LLM analysis that produces a scored HTML report.
+Validate a business idea by scraping Reddit posts and comments, using the host agent's own LLM to analyze the corpus, and producing a scored HTML report.
 
 ## When to use
 
@@ -19,10 +19,11 @@ Do NOT use for: pure keyword research, SEO tasks, generic LLM brainstorming, or 
 
 ## Prerequisites
 
-- `.env` with at minimum: `OPENAI_API_KEY`, `OPENAI_BASE_URL` (must end with `/v1`), `OPENAI_MODEL`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`.
 - Python 3.10+.
 - Dependencies installed: `pip install -r <skill_dir>/requirements.txt`.
-- Reddit app type must be **"script"** at <https://www.reddit.com/prefs/apps>.
+- **Reddit access (choose one):**
+  - Playwright browser login (default, no app needed). Set `REDDIT_LOGIN_METHOD=playwright` in `.env`.
+  - Bearer token or script-app credentials: paste `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` in `.env`. Optional `REDDIT_USERNAME` / `REDDIT_PASSWORD` for PRAW.
 
 ## File layout
 
@@ -30,6 +31,16 @@ Do NOT use for: pure keyword research, SEO tasks, generic LLM brainstorming, or 
 <skill_dir>/
 ├── SKILL.md
 ├── requirements.txt
+├── pipeline/
+│   ├── scraper.py
+│   ├── report.py
+│   └── runner.py
+├── scripts/
+│   ├── preflight.py
+│   ├── run_pipeline.py
+│   ├── render_report.py
+│   ├── extract_report.py
+│   └── recover.py
 └── resources/
     ├── DEVIN.md
     ├── CLAUDE.md
@@ -38,7 +49,7 @@ Do NOT use for: pure keyword research, SEO tasks, generic LLM brainstorming, or 
     └── report-anatomy.md
 ```
 
-All scripts emit JSON or JSONL. Outputs (reports, checkpoints, logs) are managed by the skill and land under `<skill_dir>` — see `pipeline/paths.py`.
+All scripts emit JSON or JSONL. Outputs (reports, checkpoints, logs, records) are managed by the skill and land under `<skill_dir>` — see `pipeline/paths.py`.
 
 ## Workflow
 
@@ -54,35 +65,58 @@ Run:
 python "<skill_dir>/scripts/preflight.py"
 ```
 
-Only proceed when `env_ok && deps_ok && reddit_ok && llm_ok` are all true. See `resources/failure-recovery.md` for common fixes.
+Only proceed when `env_ok && deps_ok && reddit_ok` are all true. See `resources/failure-recovery.md` for common fixes.
 
 ### Phase 2 — Pick a profile
 
 Default to **standard**. Choose **fast** for quick smoke tests, **standard** for normal validation, **deep** for high-stakes decisions. See `resources/param-matrix.md` for exact numbers.
 
-### Phase 3 — Run the pipeline
+### Phase 3 — Scrape Reddit
 
-Launch the pipeline and poll its structured JSONL output:
+Launch the scraper and poll its structured JSONL output:
 
 ```bash
 python "<skill_dir>/scripts/run_pipeline.py" "<idea>" --profile standard
 ```
 
-Key events: `run_started`, `stage`, `done`. On `done` with `success:true`, go to Phase 5. On `done` with `success:false`, go to Phase 4.
+This only scrapes; it does not run an LLM. On `done` with `success:true`, note `records_path` and `run_id` and go to Phase 4. On `done` with `success:false`, use `recover.py` or `resources/failure-recovery.md`.
 
-### Phase 4 — Recover from failure
+When `REDDIT_LOGIN_METHOD=playwright`, a real browser opens and the user must log in to Reddit. The scraper continues once login is detected.
 
-Use:
+### Phase 4 — Analyze with the host agent's LLM
 
-```bash
-python "<skill_dir>/scripts/recover.py" --resume-last --idea "<idea>" --profile standard
+1. Read the `records_path` from Phase 3.
+2. Use your own model to produce a structured analysis JSON matching this schema:
+
+```json
+{
+  "score": 70,
+  "pain_points": [{ "text": "...", "weight": 3 }],
+  "opportunities": [{ "text": "...", "weight": 3 }],
+  "recommendations": ["..."],
+  "existing_solutions": ["..."],
+  "comment_tags": {
+    "positive": 5,
+    "negative": 3,
+    "question": 2,
+    "suggestion": 1
+  }
+}
 ```
 
-For known errors, see `resources/failure-recovery.md` instead of blind retry.
+3. Save it as `<skill_dir>/analysis.json` or another path.
 
-### Phase 5 — Surface results
+### Phase 5 — Render the report
 
-Extract results:
+```bash
+python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>"
+```
+
+This produces the HTML report and appends a final `done` event to the run log.
+
+### Phase 6 — Surface results
+
+Extract the summary:
 
 ```bash
 python "<skill_dir>/scripts/extract_report.py" --run-id "<run_id>"
@@ -96,9 +130,9 @@ For exact tool-calling details, read `resources/DEVIN.md` if you are Devin, or `
 
 ## Operating principles
 
-- Never reimplement pipeline stages; call `run_pipeline.py`.
+- Never reimplement pipeline stages; call `run_pipeline.py` for scraping and `render_report.py` for rendering.
 - Always run preflight first.
-- Background the pipeline; it can take 3–30 min.
+- Background the scraper; it can take 3–30 min.
 - Parse JSONL, don't regex human text.
 - Be honest about scores.
 - Resume from checkpoint instead of restarting when possible.

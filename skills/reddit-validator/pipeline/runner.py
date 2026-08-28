@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import get_profile
-from .paths import checkpoints_dir, reports_dir
+from .paths import checkpoints_dir, logs_dir, reports_dir
 
 
 def _default_scrape(idea, profile):
@@ -39,25 +39,27 @@ def _stage_event(step, progress, message=""):
     }
 
 
+def _safe_idea(idea):
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in idea).strip("_")[:50]
+
+
 def run(
     idea,
     profile_name,
     log_path=None,
     run_id=None,
     scrape_fn=None,
-    analyze_fn=None,
-    report_fn=None,
+    analyze_fn=_default_analyze,
+    report_fn=_default_report,
 ):
     profile = get_profile(profile_name)
     if run_id is None:
         run_id = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
     if log_path is None:
-        log_path = Path(reports_dir()).parent / "logs" / f"run_{run_id}.jsonl"
+        log_path = logs_dir() / f"run_{run_id}.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
     scrape_fn = scrape_fn or _default_scrape
-    analyze_fn = analyze_fn or _default_analyze
-    report_fn = report_fn or _default_report
 
     start = time.time()
     yield _emit(
@@ -73,14 +75,53 @@ def run(
 
     analysis = None
     report_path = None
+    records_path = None
     try:
         yield _emit(log_path, _stage_event("scrape_data", 0.0, "scraping Reddit"))
         records = scrape_fn(idea, profile)
-        yield _emit(log_path, _stage_event("scrape_data", 1.0, f"collected {len(records)} records"))
+        records_path = checkpoints_dir() / f"{run_id}_records.json"
+        records_path.write_text(json.dumps(records, indent=2, default=str))
+        yield _emit(
+            log_path,
+            _stage_event("scrape_data", 1.0, f"collected {len(records)} records"),
+        )
+
+        if analyze_fn is None:
+            elapsed = time.time() - start
+            yield _emit(
+                log_path,
+                {
+                    "event": "done",
+                    "success": True,
+                    "run_id": run_id,
+                    "idea": idea,
+                    "needs_analysis": True,
+                    "records_path": str(records_path),
+                    "execution_time": round(elapsed, 2),
+                },
+            )
+            return
 
         yield _emit(log_path, _stage_event("analyze", 0.0, "running LLM analysis"))
         analysis = analyze_fn(records, idea, profile)
         yield _emit(log_path, _stage_event("analyze", 1.0, "analysis complete"))
+
+        if report_fn is None:
+            elapsed = time.time() - start
+            yield _emit(
+                log_path,
+                {
+                    "event": "done",
+                    "success": True,
+                    "run_id": run_id,
+                    "idea": idea,
+                    "needs_report": True,
+                    "analysis": analysis,
+                    "records_path": str(records_path),
+                    "execution_time": round(elapsed, 2),
+                },
+            )
+            return
 
         yield _emit(log_path, _stage_event("report", 0.0, "rendering HTML report"))
         report_path = report_fn(analysis, idea, run_id, profile)
