@@ -22,6 +22,7 @@
 ### Task 1: Scaffold package and `pipeline/paths.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/pipeline/__init__.py`
 - Create: `skills/reddit-explore/pipeline/paths.py`
 - Create: `skills/reddit-explore/tests/__init__.py`
@@ -29,9 +30,10 @@
 - Create: `skills/reddit-explore/resources/.gitkeep`
 
 **Interfaces:**
+
 - Produces: `skills_dir() -> Path`, `records_dir() -> Path`, etc. (mirrors validator's `pipeline/paths.py`).
 
-- [ ] **Step 1: Create directories and __init__.py files**
+- [ ] **Step 1:** Create directories and `__init__.py` files
 
 ```bash
 mkdir -p skills/reddit-explore/{pipeline,scripts,tests,resources}
@@ -90,10 +92,12 @@ git commit -m "scaffold reddit-explore package and shared paths"
 ### Task 2: Implement `pipeline/records.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/pipeline/records.py`
 - Create: `skills/reddit-explore/tests/test_records.py`
 
 **Interfaces:**
+
 - Produces: `post_record(post: dict) -> dict`, `comment_record(post: dict, comment: dict) -> dict`, `user_record(item: dict) -> dict`.
 
 - [ ] **Step 1: Write the failing test**
@@ -335,10 +339,12 @@ git commit -m "add reddit-explore record normalization"
 ### Task 3: Implement `pipeline/client.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/pipeline/client.py`
 - Create: `skills/reddit-explore/tests/test_client.py`
 
 **Interfaces:**
+
 - Consumes: `reddit-auth` (`resolve_strategy()`, `get_client()`, `ensure_authenticated_page()`, `fetch_json()`, `bearer_token()`, `user_agent()`).
 - Produces: `class Fetcher` with `search()`, `subreddit_listing()`, `post()`, `user()`, `close()`, plus `get_fetcher()` and `Fetcher.from_existing()`.
 
@@ -695,10 +701,12 @@ git commit -m "add reddit-explore Fetcher client with auth strategy dispatch"
 ### Task 4: Implement `pipeline/explorer.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/pipeline/explorer.py`
 - Create: `skills/reddit-explore/tests/test_explorer.py`
 
 **Interfaces:**
+
 - Consumes: `Fetcher` (from `client.py`), `post_record`, `comment_record`, `user_record` (from `records.py`).
 - Produces: `search_posts()`, `list_subreddit()`, `get_post()`, `get_user()`.
 
@@ -932,12 +940,14 @@ git commit -m "add reddit-explore read primitives"
 ### Task 5: Implement `scripts/search.py` and `scripts/subreddit.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/scripts/search.py`
 - Create: `skills/reddit-explore/scripts/subreddit.py`
 - Create: `skills/reddit-explore/tests/test_scripts_search.py`
 - Create: `skills/reddit-explore/tests/test_scripts_subreddit.py`
 
 **Interfaces:**
+
 - Consumes: `search_posts()`, `list_subreddit()`, `get_fetcher()`, `records_dir()`.
 - Produces: `scripts/search.py` and `scripts/subreddit.py` CLI entrypoints.
 
@@ -1160,12 +1170,14 @@ git commit -m "add reddit-explore search and subreddit CLI scripts"
 ### Task 6: Implement `scripts/post.py` and `scripts/user.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/scripts/post.py`
 - Create: `skills/reddit-explore/scripts/user.py`
 - Create: `skills/reddit-explore/tests/test_scripts_post.py`
 - Create: `skills/reddit-explore/tests/test_scripts_user.py`
 
 **Interfaces:**
+
 - Consumes: `get_post()`, `get_user()`, `get_fetcher()`, `records_dir()`.
 - Produces: `scripts/post.py` and `scripts/user.py` CLI entrypoints.
 
@@ -1370,10 +1382,12 @@ git commit -m "add reddit-explore post and user CLI scripts"
 ### Task 7: Implement `scripts/preflight.py`
 
 **Files:**
+
 - Create: `skills/reddit-explore/scripts/preflight.py`
 - Create: `skills/reddit-explore/tests/test_preflight.py`
 
 **Interfaces:**
+
 - Consumes: `reddit-auth.validate_credentials()`.
 - Produces: `preflight()` returning `{env_ok, deps_ok, reddit_ok}`.
 
@@ -1503,6 +1517,7 @@ git commit -m "add reddit-explore preflight script and tests"
 ### Task 8: Skill contract and metadata
 
 **Files:**
+
 - Create: `skills/reddit-explore/requirements.txt`
 - Create: `skills/reddit-explore/.env.example`
 - Create: `skills/reddit-explore/.markdownlint.json`
@@ -1650,7 +1665,6 @@ If `success` is false, read `error` and `code`.
 ## Phase 4 — Surface results
 
 Summarize the records for the user. Do not dump full JSON.
-```
 
 `CLAUDE.md` is the same with tool names adjusted (`Bash` instead of background commands).
 
@@ -1690,10 +1704,12 @@ git commit -m "add reddit-explore skill contract, env, and runtime guides"
 ### Task 9: Refactor `reddit-validator` to use `reddit-explore`
 
 **Files:**
+
 - Modify: `skills/reddit-validator/pipeline/scraper.py`
 - Modify: `skills/reddit-validator/tests/test_scraper.py`
 
 **Interfaces:**
+
 - Consumes: `reddit-explore/pipeline/explorer.search_posts()`, `reddit-explore/pipeline/client.Fetcher.from_existing()`.
 - Produces: same `scrape(idea, profile, client=None, subreddits=None)` API.
 
@@ -1865,6 +1881,7 @@ git commit -m "refactor reddit-validator scraper to delegate to reddit-explore"
 ### Task 10: Create `.devin/skills` symlink and final integration
 
 **Files:**
+
 - Create: `.devin/skills/reddit-explore`
 
 - [ ] **Step 1: Create symlink**
