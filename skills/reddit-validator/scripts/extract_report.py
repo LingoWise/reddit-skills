@@ -40,7 +40,10 @@ def _extract_done_event(log_path):
     for line in log_path.read_text().splitlines():
         if not line.strip():
             continue
-        event = json.loads(line)
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
         if event.get("event") == "done":
             done = event
     if done is None:

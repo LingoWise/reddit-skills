@@ -95,15 +95,52 @@ When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), `reddit-validator` call
 ### Phase 4 — Analyze
 
 1. Read the `records_path` from Phase 3.
-1. If `OPENAI_API_KEY` or `OPENROUTER_API_KEY` is configured, use `pipeline/analyzer.py` to generate the analysis JSON. Otherwise, use the host agent's own model to produce the structured JSON matching this schema:
+2. **Detect the user's language** from their original request. If they wrote in Chinese, set `language="zh"`. Default is `"en"`. Pass this to the analyzer so the report content matches the user's language.
+3. If `OPENAI_API_KEY` or `OPENROUTER_API_KEY` is configured, use `pipeline/analyzer.py` to generate the analysis JSON:
+
+```python
+from pipeline.analyzer import analyze
+result = analyze(records, idea, profile, language="zh")  # or "en"
+```
+
+Otherwise, use the host agent's own model to produce the structured JSON matching this schema:
 
 ```json
 {
   "score": 70,
-  "market_snapshot": ["..."],
-  "pain_points": [{ "text": "...", "weight": 3 }],
-  "existing_solutions": ["..."],
-  "opportunities": [{ "text": "...", "weight": 3 }],
+  "language": "zh",
+  "original_idea": "用户原始想法文本",
+  "analysis_method": {
+    "name": "Jobs-to-be-Done + Competitive Moat Analysis",
+    "rationale": "适用于已有竞品的 SaaS 产品..."
+  },
+  "market_snapshot": [
+    {
+      "text": "...",
+      "sources": [{ "subreddit": "r/IELTS", "url": "https://..." }]
+    }
+  ],
+  "pain_points": [
+    {
+      "text": "...",
+      "weight": 3,
+      "sources": [{ "subreddit": "r/TOEFL", "url": "https://..." }]
+    }
+  ],
+  "existing_solutions": [
+    {
+      "name": "TestGlider",
+      "description": "...",
+      "sources": [{ "subreddit": "...", "url": "..." }]
+    }
+  ],
+  "opportunities": [
+    {
+      "text": "...",
+      "weight": 3,
+      "sources": [{ "subreddit": "...", "url": "..." }]
+    }
+  ],
   "how_to_win": ["..."],
   "recommendations": ["..."],
   "comment_tags": {
@@ -115,15 +152,23 @@ When `REDDIT_LOGIN_METHOD=rustwright` (or `playwright`), `reddit-validator` call
 }
 ```
 
-1. Save it as `<skill_dir>/analysis.json` or another path.
+**Key requirements for the analysis:**
+
+- `language`: echo the detected language code (e.g. `"zh"`, `"en"`).
+- `original_idea`: the user's idea text verbatim.
+- `analysis_method`: the LLM selects a framework (Jobs-to-be-Done, SWOT, Porter's Five Forces, Lean Canvas, Blue Ocean, Kano, Two-Sided Market, Competitive Moat) based on idea type, and explains why.
+- `sources`: every claim in `market_snapshot`, `pain_points`, `existing_solutions`, and `opportunities` must cite at least one Reddit post URL from the corpus. Do not fabricate sources.
+- All text content (except URLs and numbers) must be in the user's language.
+
+4. Save it as `<skill_dir>/analysis.json` or another path.
 
 ### Phase 5 — Render the report
 
 ```bash
-python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>"
+python "<skill_dir>/scripts/render_report.py" --analysis "<analysis.json>" --run-id "<run_id>" --language "<language>"
 ```
 
-This produces the HTML report and appends a final `done` event to the run log.
+This produces the HTML report (with citations, analytics charts, analysis method, and the user's original idea), appends a final `done` event to the run log, and **auto-opens the report in the default browser**. Use `--no-open` to suppress auto-opening.
 
 ### Phase 6 — Surface results
 
