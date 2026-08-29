@@ -1675,7 +1675,7 @@ git commit -m "add reddit-publish publish script with dry-run support"
 
 - [ ] **Step 1: Write `resources/DEVIN.md`**
 
-```markdown
+````markdown
 # Devin Runtime Guide for reddit-publish
 
 ## Phase 1 — Preflight
@@ -1712,11 +1712,11 @@ python "<skill_dir>/scripts/publish.py" "<draft_path>"
 ## Phase 5 — Surface
 
 Tell the user the post URL and title. Do not paste full JSON.
-```
+````
 
 - [ ] **Step 2: Write `resources/CLAUDE.md`**
 
-```markdown
+````markdown
 # Claude Code Runtime Guide for reddit-publish
 
 ## Phase 1 — Preflight
@@ -1751,7 +1751,8 @@ python "<skill_dir>/scripts/publish.py" "<draft_path>"
 ## Phase 5 — Surface
 
 Return the post URL and title. If `success` is false, read `code` and `error`, then check `resources/failure-recovery.md`.
-```
+
+````
 
 - [ ] **Step 3: Write `resources/failure-recovery.md`**
 
