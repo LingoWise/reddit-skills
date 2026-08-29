@@ -1,0 +1,5 @@
+rustwright
+openai
+requests
+python-dotenv
+praw
