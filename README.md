@@ -24,12 +24,14 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 
 | Skill | Status | Description | Core Capabilities |
 | --- | --- | --- | --- |
-| reddit-auth | Spec complete | Authentication and session management | Login check, session refresh, credential hygiene |
-| reddit-validator | Spec complete | Idea validation via Reddit scraping and LLM analysis | Search, scrape, multi-agent analysis, scored HTML report |
-| reddit-explore | Planned | Discovery and research | Search, subreddit browsing, post details, user profiles |
-| reddit-publish | Spec + plan complete | Content publishing | Research, draft, and publish text/link/image posts |
+| reddit-auth | Complete | Authentication and session management | Rustwright browser login, bearer token, PRAW script app, public fallback, session refresh, credential hygiene |
+| reddit-validator | Complete | Idea validation via Reddit scraping and LLM analysis | Search, scrape, multi-agent analysis, scored HTML report, recovery |
+| reddit-explore | Complete | Discovery and research | Search posts, browse subreddits, read post details with comments, view user profiles |
+| reddit-publish | Complete | Content publishing | Research top content, draft in a chosen style, submit text/link/image posts (with `--dry-run`) |
 | reddit-interact | Planned | Social interaction | Comment, reply, upvote, downvote, save |
 | reddit-content-ops | Planned | Compound operations | Subreddit analysis, trend tracking, engagement campaigns |
+
+The four completed skills are runnable today. `reddit-interact` and `reddit-content-ops` are reserved stubs.
 
 ## How it works
 
@@ -40,14 +42,44 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 
 ## Quickstart
 
-The first skill, `reddit-validator`, has a complete spec in `skills/reddit-validator/SKILL.md`. As skills are implemented, each will follow the same contract:
+Each completed skill follows the same contract: a `SKILL.md` describing purpose, prerequisites, workflow, and error recovery, plus a `pipeline/` and `scripts/` implemented in Python.
 
 1. Clone the repo.
 2. Read the `SKILL.md` for the skill you want to run.
-3. Install its dependencies.
-4. Configure the required environment variables.
-5. Run its preflight checks.
-6. Execute the skill pipeline.
+3. Install dependencies: `uv pip install -r skills/<skill-name>/requirements.txt`.
+4. Configure environment variables (Reddit credentials in `.env`; `OPENAI_API_KEY` / `OPENROUTER_API_KEY` as shell env vars when AI steps are needed).
+5. Run preflight, then the skill's scripts.
+
+### Common first run
+
+Authenticate once with `reddit-auth`, then any other skill reuses the saved session:
+
+```bash
+python skills/reddit-auth/scripts/preflight.py
+python skills/reddit-auth/scripts/login.py
+```
+
+### Per-skill entrypoints
+
+```bash
+# reddit-validator — validate an idea and produce a scored HTML report
+python skills/reddit-validator/scripts/preflight.py
+python skills/reddit-validator/scripts/run_pipeline.py "your idea" --profile standard
+python skills/reddit-validator/scripts/extract_report.py --run-id <run_id>
+
+# reddit-explore — search, browse, read posts, look up users
+python skills/reddit-explore/scripts/preflight.py
+python skills/reddit-explore/scripts/search.py "<query>"
+python skills/reddit-explore/scripts/subreddit.py "<name>"
+python skills/reddit-explore/scripts/post.py "<url_or_id>"
+python skills/reddit-explore/scripts/user.py "<name>"
+
+# reddit-publish — research, draft, and submit a post
+python skills/reddit-publish/scripts/preflight.py
+python skills/reddit-publish/scripts/research.py "<topic>" [--subreddit ...] [--suggest-subreddit]
+python skills/reddit-publish/scripts/draft.py path/to/research.json [--style ...]
+python skills/reddit-publish/scripts/publish.py path/to/draft.json [--dry-run]
+```
 
 ## Adding a new skill
 
