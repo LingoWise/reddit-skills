@@ -27,7 +27,7 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 | reddit-auth | Spec complete | Authentication and session management | Login check, session refresh, credential hygiene |
 | reddit-validator | Spec complete | Idea validation via Reddit scraping and LLM analysis | Search, scrape, multi-agent analysis, scored HTML report |
 | reddit-explore | Planned | Discovery and research | Search, subreddit browsing, post details, user profiles |
-| reddit-publish | Planned | Content publishing | Text, link, and image post submission |
+| reddit-publish | Spec + plan complete | Content publishing | Research, draft, and publish text/link/image posts |
 | reddit-interact | Planned | Social interaction | Comment, reply, upvote, downvote, save |
 | reddit-content-ops | Planned | Compound operations | Subreddit analysis, trend tracking, engagement campaigns |
 
