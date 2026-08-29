@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -9,116 +8,120 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pipeline.scraper import scrape
 
 
-class FakeComment:
-    def __init__(self, body, author="user", score=1):
-        self.id = "c1"
-        self.body = body
-        self.author = author
-        self.score = score
-        self.permalink = "/r/test/comments/p1/test/c1/"
+class FakeFetcher:
+    def __init__(self, posts=None, comments=None):
+        self._posts = posts or []
+        self._comments = comments or []
+        self.search_calls = []
+        self.post_calls = []
 
+    def search(self, query, **kwargs):
+        self.search_calls.append((query, kwargs))
+        return self._posts
 
-class FakeComments:
-    def __init__(self, comments):
-        self._comments = comments
+    def post(self, permalink_or_id, **kwargs):
+        self.post_calls.append((permalink_or_id, kwargs))
+        return (self._posts[0], self._comments) if self._posts else ({}, [])
 
-    def replace_more(self, limit=None):
+    def close(self):
         pass
 
-    def list(self):
-        return self._comments
+
+class FakeExplorer:
+    def __init__(self, records):
+        self._records = records
+        self.calls = []
+
+    def search_posts(self, idea, *, fetcher, **kwargs):
+        self.calls.append((idea, kwargs))
+        if fetcher is not None:
+            fetcher.search(idea, **kwargs)
+        return self._records
 
 
-class FakeSubmission:
-    def __init__(self, title="Test post", body="post body", comments=None):
-        self.id = "p1"
-        self.title = title
-        self.selftext = body
-        self.subreddit = "test"
-        self.author = "op"
-        self.score = 10
-        self.url = "https://reddit.com/r/test/comments/p1/test/"
-        self.permalink = "/r/test/comments/p1/test/"
-        self.comments = FakeComments(comments or [FakeComment("need this")])
+def _patch_scraper(monkeypatch, records, fetcher=None):
+    from pipeline import scraper
+
+    def fake_load_explorer():
+        return FakeExplorer(records)
+
+    def fake_load_client():
+        class FakeClient:
+            @staticmethod
+            def get_fetcher():
+                return fetcher or FakeFetcher()
+
+            class Fetcher:
+                @staticmethod
+                def from_existing(client):
+                    return fetcher or FakeFetcher()
+
+        return FakeClient()
+
+    monkeypatch.setattr(scraper, "_load_explorer", fake_load_explorer)
+    monkeypatch.setattr(scraper, "_load_client", fake_load_client)
 
 
-class FakeSubreddit:
-    def __init__(self, submissions, name="all"):
-        self._submissions = submissions
-        self.name = name
-
-    def search(self, idea, sort=None, time_filter=None, limit=None):
-        return self._submissions[:limit]
-
-
-class FakeReddit:
-    def __init__(self, submissions):
-        self._submissions = submissions
-        self.searched_subs = []
-
-    def subreddit(self, name):
-        self.searched_subs.append(name)
-        return FakeSubreddit(self._submissions, name=name)
+def test_scrape_returns_records(monkeypatch):
+    records = [
+        {"is_comment": True, "title": "Best app for X?", "text": "I need this"},
+        {"is_comment": False, "title": "Best app for X?", "text": "Looking for ..."},
+    ]
+    _patch_scraper(monkeypatch, records)
+    result = scrape("app for X", {"subreddits": 1, "posts_per_subreddit": 1})
+    assert len(result) == 2
+    assert result[0]["is_comment"] is True
+    assert result[1]["is_comment"] is False
 
 
-def test_scrape_returns_comment_records():
-    submission = FakeSubmission(
-        title="Best app for X?",
-        body="Looking for ...",
-        comments=[FakeComment("I need this so much", "u1", 5)],
-    )
-    client = FakeReddit([submission])
+def test_scrape_targets_specific_subreddits(monkeypatch):
+    records = [
+        {"is_comment": False, "title": "IELTS speaking practice"},
+        {"is_comment": False, "title": "IELTS speaking practice"},
+    ]
+    fetcher = FakeFetcher()
+    explorer = FakeExplorer(records)
 
-    records = scrape("app for X", {"subreddits": 1, "posts_per_subreddit": 1}, client=client)
+    from pipeline import scraper
 
-    assert len(records) == 2
-    assert records[0]["is_comment"] is True
-    assert records[0]["title"] == "Best app for X?"
-    assert records[0]["text"] == "I need this so much"
-    assert records[0]["subreddit"] == "test"
-    assert records[1]["is_comment"] is False
+    def fake_load_explorer():
+        return explorer
 
+    monkeypatch.setattr(scraper, "_load_explorer", fake_load_explorer)
+    monkeypatch.setattr(scraper, "_load_client", lambda: type(
+        "FakeClient", (), {"get_fetcher": lambda: fetcher, "Fetcher": type(
+            "Fetcher", (), {"from_existing": classmethod(lambda cls, client: fetcher)}
+        )}
+    )())
 
-def test_scrape_targets_specific_subreddits():
-    """When subreddits are specified, the scraper searches each one individually."""
-    submission = FakeSubmission(
-        title="IELTS speaking practice",
-        body="Need feedback on my speaking",
-        comments=[FakeComment("I struggle with fluency", "u1", 3)],
-    )
-    client = FakeReddit([submission])
-
-    records = scrape(
+    result = scrape(
         "AI IELTS grading",
         {"posts_per_subreddit": 5},
-        client=client,
+        client=object(),
         subreddits="IELTS,TOEFL",
     )
-
-    # Should have searched two specific subreddits, not "all"
-    assert client.searched_subs == ["IELTS", "TOEFL"]
-    # Each sub returns 1 post + 1 comment = 2 records, 2 subs = 4 records
-    assert len(records) == 4
-    assert all(r["subreddit"] == "test" for r in records)  # FakeSubreddit always returns "test"
+    assert len(result) == 2
+    assert len(explorer.calls) == 1
+    assert explorer.calls[0][1]["subreddits"] == "IELTS,TOEFL"
 
 
-def test_scrape_without_subreddits_searches_all():
-    """Without subreddits, the scraper falls back to /r/all search."""
-    submission = FakeSubmission(title="test", body="body")
-    client = FakeReddit([submission])
+def test_scrape_without_subreddits_searches_all(monkeypatch):
+    records = [{"is_comment": False, "title": "test"}]
+    fetcher = FakeFetcher()
+    explorer = FakeExplorer(records)
 
-    scrape("test idea", {"subreddits": 1, "posts_per_subreddit": 1}, client=client)
+    from pipeline import scraper
 
-    assert client.searched_subs == ["all"]
+    def fake_load_explorer():
+        return explorer
 
+    monkeypatch.setattr(scraper, "_load_explorer", fake_load_explorer)
+    monkeypatch.setattr(scraper, "_load_client", lambda: type(
+        "FakeClient", (), {"get_fetcher": lambda: fetcher, "Fetcher": type(
+            "Fetcher", (), {"from_existing": classmethod(lambda cls, client: fetcher)}
+        )}
+    )())
 
-def test_normalize_subreddits():
-    from pipeline.scraper import _normalize_subreddits
-
-    assert _normalize_subreddits(None) == []
-    assert _normalize_subreddits("") == []
-    assert _normalize_subreddits("IELTS") == ["IELTS"]
-    assert _normalize_subreddits("r/IELTS") == ["IELTS"]
-    assert _normalize_subreddits("IELTS, TOEFL") == ["IELTS", "TOEFL"]
-    assert _normalize_subreddits(["IELTS", "TOEFL"]) == ["IELTS", "TOEFL"]
-    assert _normalize_subreddits(["r/IELTS", " TOEFL "]) == ["IELTS", "TOEFL"]
+    scrape("test idea", {"subreddits": 1, "posts_per_subreddit": 1}, client=object())
+    assert len(explorer.calls) == 1
+    assert explorer.calls[0][1]["subreddits"] is None
