@@ -24,7 +24,7 @@ def normalize_thing_id(value: str, kind: str) -> str:
     value = value.strip()
     prefix = "t3_" if kind == "post" else "t1_"
 
-    if value.startswith(prefix):
+    if value.startswith(("t3_", "t1_")):
         return value
 
     if value.startswith("http") or value.startswith("/r/"):
@@ -39,6 +39,24 @@ def normalize_thing_id(value: str, kind: str) -> str:
                 return f"t1_{parts[idx + 2]}"
 
     return f"{prefix}{value}"
+
+
+def detect_kind(value: str) -> str:
+    """Detect whether a URL/ID refers to a post or a comment.
+
+    Returns "post" or "comment".
+    """
+    value = value.strip()
+    if value.startswith("t1_"):
+        return "comment"
+    if value.startswith("t3_"):
+        return "post"
+    parts = [p for p in value.split("/") if p]
+    if "comments" in parts:
+        idx = parts.index("comments")
+        if idx + 3 < len(parts):
+            return "comment"
+    return "post"
 
 
 class Interactor:
@@ -117,7 +135,10 @@ class Interactor:
         )
         if not result.get("ok"):
             raise RuntimeError(f"Reddit POST failed: {result.get('status')} {result.get('body', '')[:200]}")
-        return json.loads(result["body"])
+        try:
+            return json.loads(result["body"])
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Reddit returned non-JSON response: {result['body'][:200]}") from exc
 
     def comment(self, thing_id: str, text: str) -> dict:
         data = self._post_json("/api/comment", {"thing_id": thing_id, "text": text})
@@ -134,18 +155,28 @@ class Interactor:
         }
 
     def reply(self, comment_id: str, text: str) -> dict:
+        if not comment_id.startswith("t1_"):
+            raise ValueError(f"reply expects a comment fullname (t1_), got: {comment_id}")
         return self.comment(comment_id, text)
 
+    def _check_errors(self, data: dict, action: str) -> None:
+        errors = data.get("json", {}).get("errors", [])
+        if errors:
+            raise RuntimeError(f"Reddit rejected {action}: {errors}")
+
     def vote(self, thing_id: str, direction: int) -> dict:
-        self._post_json("/api/vote", {"id": thing_id, "dir": str(direction)})
+        data = self._post_json("/api/vote", {"id": thing_id, "dir": str(direction)})
+        self._check_errors(data, "vote")
         return {"action": "vote", "thing_id": thing_id, "direction": direction}
 
     def save(self, thing_id: str) -> dict:
-        self._post_json("/api/save", {"id": thing_id})
+        data = self._post_json("/api/save", {"id": thing_id})
+        self._check_errors(data, "save")
         return {"action": "save", "thing_id": thing_id}
 
     def unsave(self, thing_id: str) -> dict:
-        self._post_json("/api/unsave", {"id": thing_id})
+        data = self._post_json("/api/unsave", {"id": thing_id})
+        self._check_errors(data, "unsave")
         return {"action": "unsave", "thing_id": thing_id}
 
     def close(self) -> None:

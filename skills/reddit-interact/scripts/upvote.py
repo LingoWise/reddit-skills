@@ -6,22 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.interactor import Interactor, normalize_thing_id
+from pipeline.interactor import Interactor, normalize_thing_id, detect_kind
 from pipeline.paths import records_dir
-
-
-def _detect_kind(value: str) -> str:
-    value = value.strip()
-    if value.startswith("t1_"):
-        return "comment"
-    if value.startswith("t3_"):
-        return "post"
-    parts = [p for p in value.split("/") if p]
-    if "comments" in parts:
-        idx = parts.index("comments")
-        if idx + 3 < len(parts):
-            return "comment"
-    return "post"
 
 
 def parse_args(argv=None):
@@ -34,7 +20,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    kind = _detect_kind(args.url_or_id)
+    kind = detect_kind(args.url_or_id)
     thing_id = normalize_thing_id(args.url_or_id, kind)
 
     if args.dry_run:

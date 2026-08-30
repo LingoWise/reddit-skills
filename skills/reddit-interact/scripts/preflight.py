@@ -1,17 +1,18 @@
 import importlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+REQUIRED_ENV = []
+
 REQUIRED_DEPS = [
     "dotenv",
-    "requests",
     "rustwright",
-    "praw",
 ]
 
 
@@ -21,6 +22,13 @@ def _load_auth():
     auth = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(auth)
     return auth
+
+
+def check_env(required=None):
+    if required is None:
+        required = REQUIRED_ENV
+    missing = [key for key in required if not os.getenv(key)]
+    return (len(missing) == 0, missing)
 
 
 def check_deps(dependency_names=None):
@@ -36,19 +44,22 @@ def check_deps(dependency_names=None):
 
 
 def preflight():
+    env_ok, missing_env = check_env()
     deps_ok, missing_deps = check_deps()
 
     reddit_ok = False
     reddit_message = "dependencies missing"
-    if deps_ok:
+    if env_ok and deps_ok:
         auth = _load_auth()
         reddit_ok, reddit_message = auth.validate_credentials()
 
     result = {
-        "env_ok": True,
+        "env_ok": env_ok,
         "deps_ok": deps_ok,
         "reddit_ok": reddit_ok,
     }
+    if not env_ok:
+        result["missing"] = missing_env
     if not deps_ok:
         result["missing_deps"] = missing_deps
     if not reddit_ok:
@@ -60,4 +71,4 @@ def preflight():
 
 if __name__ == "__main__":
     result = preflight()
-    sys.exit(0 if result["deps_ok"] and result["reddit_ok"] else 1)
+    sys.exit(0 if all(result[k] for k in ["env_ok", "deps_ok", "reddit_ok"]) else 1)
