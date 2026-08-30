@@ -28,10 +28,10 @@ The goal is agentic operations: the agent decides what to do, the skill executes
 | reddit-validator | Complete | Idea validation via Reddit scraping and LLM analysis | Search, scrape, multi-agent analysis, scored HTML report, recovery |
 | reddit-explore | Complete | Discovery and research | Search posts, browse subreddits, read post details with comments, view user profiles |
 | reddit-publish | Complete | Content publishing | Research top content, draft in a chosen style, submit text/link/image posts (with `--dry-run`) |
-| reddit-interact | Planned | Social interaction | Comment, reply, upvote, downvote, save |
+| reddit-interact | Complete | Social interaction | Comment, reply, upvote, downvote, save |
 | reddit-content-ops | Planned | Compound operations | Subreddit analysis, trend tracking, engagement campaigns |
 
-The four completed skills are runnable today. `reddit-interact` and `reddit-content-ops` are reserved stubs.
+The five completed skills are runnable today. `reddit-content-ops` is a reserved stub.
 
 ## How it works
 
@@ -79,6 +79,14 @@ python skills/reddit-publish/scripts/preflight.py
 python skills/reddit-publish/scripts/research.py "<topic>" [--subreddit ...] [--suggest-subreddit]
 python skills/reddit-publish/scripts/draft.py path/to/research.json [--style ...]
 python skills/reddit-publish/scripts/publish.py path/to/draft.json [--dry-run]
+
+# reddit-interact — comment, reply, vote, save
+python skills/reddit-interact/scripts/preflight.py
+python skills/reddit-interact/scripts/comment.py "<post_url_or_id>" --text "..."
+python skills/reddit-interact/scripts/reply.py "<comment_url_or_id>" --text "..."
+python skills/reddit-interact/scripts/upvote.py "<url_or_id>"
+python skills/reddit-interact/scripts/downvote.py "<url_or_id>"
+python skills/reddit-interact/scripts/save.py "<url_or_id>"
 ```
 
 ## Adding a new skill
