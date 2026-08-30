@@ -80,13 +80,13 @@ python skills/reddit-publish/scripts/research.py "<topic>" [--subreddit ...] [--
 python skills/reddit-publish/scripts/draft.py path/to/research.json [--style ...]
 python skills/reddit-publish/scripts/publish.py path/to/draft.json [--dry-run]
 
-# reddit-interact — comment, reply, vote, save
+# reddit-interact — comment, reply, vote, save (all support --dry-run)
 python skills/reddit-interact/scripts/preflight.py
-python skills/reddit-interact/scripts/comment.py "<post_url_or_id>" --text "..."
-python skills/reddit-interact/scripts/reply.py "<comment_url_or_id>" --text "..."
-python skills/reddit-interact/scripts/upvote.py "<url_or_id>"
-python skills/reddit-interact/scripts/downvote.py "<url_or_id>"
-python skills/reddit-interact/scripts/save.py "<url_or_id>"
+python skills/reddit-interact/scripts/comment.py "<post_url_or_id>" --text "..." [--text-file path] [--dry-run]
+python skills/reddit-interact/scripts/reply.py "<comment_url_or_id>" --text "..." [--text-file path] [--dry-run]
+python skills/reddit-interact/scripts/upvote.py "<url_or_id>" [--dry-run]
+python skills/reddit-interact/scripts/downvote.py "<url_or_id>" [--dry-run]
+python skills/reddit-interact/scripts/save.py "<url_or_id>" [--unsave] [--dry-run]
 ```
 
 ## Adding a new skill
