@@ -173,10 +173,10 @@ Options:
 - **`name`** — unique step identifier, used by `depends_on` and `output_key` references
 - **`skill`** — which reddit skill this step calls
 - **`description`** — human-readable explanation of the step
-- **`command`** — argv array. Supports `{param}` placeholders filled from user params, and `{step_name.field}` references filled from prior step outputs
+- **`command`** — argv array. Supports two placeholder types: `{param_name}` filled from user params, and `{step_name.field}` filled from prior step outputs. Placeholder resolution order: `{step_name.field}` references first (dot in the key), then `{param_name}` (no dot). This avoids ambiguity since step names and param names occupy different namespaces.
 - **`depends_on`** — list of step names that must complete before this step starts
 - **`output_key`** — key under which this step's output is stored for reference by later steps
-- **`condition`** — optional expression evaluated against prior step outputs. If false, step is skipped
+- **`condition`** — optional expression evaluated against prior step outputs. Supported syntax: `step_name.field == value`, `step_name.field != value`, `step_name.success == true|false`. Multiple conditions joined by `and`/`or`. If the condition evaluates to false (or any referenced step was skipped/failed), the step is skipped.
 - **`retry`** — `{"max_attempts": int, "delay_seconds": int}`. Defaults to `{"max_attempts": 1, "delay_seconds": 0}` (no retry)
 - **`checkpoint`** — if true, runner emits a `checkpoint` event and pauses before executing. Host agent must send `resume` or `skip`
 
