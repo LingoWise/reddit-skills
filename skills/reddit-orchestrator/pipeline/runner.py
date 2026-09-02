@@ -1,6 +1,7 @@
 """DAG-based plan executor with conditionals, retries, and checkpoints."""
 
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -53,6 +54,12 @@ def resolve_placeholders(command, step_outputs, params):
                 for key in field.split("."):
                     if isinstance(value, dict):
                         value = value.get(key)
+                    elif isinstance(value, list) and key.isdigit() and key != "":
+                        idx = int(key)
+                        if 0 <= idx < len(value):
+                            value = value[idx]
+                        else:
+                            return match.group(0)
                     else:
                         return match.group(0)
                 if value is not None:
@@ -120,6 +127,15 @@ def _eval_single_condition(expr, step_outputs):
     return False
 
 
+def _coerce_output(output, stdout):
+    """Normalize parsed JSON into a result dict with a success flag."""
+    if isinstance(output, dict):
+        if "success" not in output:
+            output["success"] = True
+        return output.get("success", True), output
+    return True, {"success": True, "stdout": stdout, "json_output": output}
+
+
 def _run_subprocess(command):
     """Run a subprocess and return (success, output_dict)."""
     try:
@@ -128,24 +144,27 @@ def _run_subprocess(command):
             capture_output=True,
             text=True,
             timeout=3600,
+            check=False,
         )
         if result.returncode != 0:
             return False, {"error": result.stderr.strip() or f"exit code {result.returncode}"}
 
-        lines = result.stdout.strip().split("\n")
-        if not lines or not lines[-1].strip():
-            return True, {"stdout": result.stdout}
+        stdout_stripped = result.stdout.strip()
+        if not stdout_stripped:
+            return True, {"success": True, "stdout": result.stdout}
 
         try:
-            output = json.loads(lines[-1])
-            if "success" not in output:
-                output["success"] = True
-            return output.get("success", True), output
+            output = json.loads(stdout_stripped)
         except json.JSONDecodeError:
-            return True, {"stdout": result.stdout}
+            lines = stdout_stripped.split("\n")
+            try:
+                output = json.loads(lines[-1])
+            except json.JSONDecodeError:
+                return True, {"success": True, "stdout": result.stdout}
+        return _coerce_output(output, result.stdout)
     except subprocess.TimeoutExpired:
         return False, {"error": "subprocess timed out"}
-    except Exception as exc:
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as exc:
         return False, {"error": str(exc)}
 
 
@@ -167,13 +186,14 @@ def _read_checkpoint_response(stdin_input):
     return None
 
 
-def execute(plan, dry_run=False, stdin_input=None):
+def execute(plan, dry_run=False, stdin_input=None, state=None):
     """Execute a plan and yield JSONL events.
 
     Args:
         plan: Plan dict with plan_id, workflow, request, steps.
         dry_run: If True, print commands without executing.
         stdin_input: File-like object for checkpoint responses. If None, reads from sys.stdin.
+        state: Optional saved state dict for resuming a plan.
 
     Yields:
         Event dicts (plan_started, step_started, step_done, step_skipped,
@@ -188,12 +208,26 @@ def execute(plan, dry_run=False, stdin_input=None):
     ordered_steps = topological_sort(steps)
     step_outputs = {}
     skipped_steps = set()
+    if state:
+        for k, v in state.get("step_outputs", {}).items():
+            if isinstance(v, dict) and v.get("success") is True:
+                step_outputs[k] = v
+        skipped_steps = set(state.get("skipped_steps", []))
     completed = 0
     skipped = 0
     failed = 0
 
     for step in ordered_steps:
         name = step["name"]
+        output_key = step.get("output_key", name)
+        if output_key in step_outputs:
+            completed += 1
+            yield {"event": "step_done", "step": name, "success": True, "output": step_outputs[output_key], "resumed": True}
+            continue
+        if name in skipped_steps:
+            skipped += 1
+            yield {"event": "step_skipped", "step": name, "reason": "resumed"}
+            continue
         condition = step.get("condition")
         checkpoint = step.get("checkpoint", False)
         retry = step.get("retry", {"max_attempts": 1, "delay_seconds": 0})
@@ -203,7 +237,7 @@ def execute(plan, dry_run=False, stdin_input=None):
         # Check if any dependency was skipped or failed
         deps = step.get("depends_on", [])
         dep_failed = any(d in skipped_steps or not step_outputs.get(d, {}).get("success") for d in deps)
-        if dep_failed and condition is not None:
+        if dep_failed:
             yield {"event": "step_skipped", "step": name, "reason": "dependency failed or skipped"}
             skipped += 1
             skipped_steps.add(name)
@@ -277,8 +311,8 @@ def execute(plan, dry_run=False, stdin_input=None):
                 "step_outputs": step_outputs,
                 "skipped_steps": list(skipped_steps),
             })
-        except Exception:
-            pass
+        except (OSError, TypeError, ValueError) as exc:
+            logging.getLogger(__name__).warning("Failed to save state for %s: %s", plan_id, exc)
 
     yield {
         "event": "plan_done",

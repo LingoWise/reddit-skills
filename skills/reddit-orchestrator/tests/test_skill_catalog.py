@@ -1,11 +1,9 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.skill_catalog import SKILLS, get_skill, catalog_summary
+from pipeline.skill_catalog import SKILLS, catalog_summary, get_skill
 
 
 def test_skills_has_five_entries():

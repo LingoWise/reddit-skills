@@ -28,3 +28,6 @@ def test_search_main(monkeypatch, capsys, tmp_path):
     out = json.loads(capsys.readouterr().out)
     assert out["event"] == "done"
     assert out["count"] == 1
+    assert "posts" in out
+    assert isinstance(out["posts"], list)
+    assert out["posts"][0]["url"]

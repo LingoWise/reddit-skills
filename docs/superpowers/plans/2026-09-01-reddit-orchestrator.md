@@ -661,7 +661,7 @@ def validate_idea(idea, profile="standard", subreddits=None):
     return plan
 
 
-def brand_growth(brand, subreddits, post_count=1, style=None):
+def brand_growth(brand, subreddits="", post_count=1, style=None):
     """Workflow: grow brand presence across subreddits."""
     plan = _new_plan("brand_growth", brand)
     first_sub = subreddits.split(",")[0].strip() if subreddits else ""
@@ -671,7 +671,7 @@ def brand_growth(brand, subreddits, post_count=1, style=None):
             "reddit-explore",
             "Research target subreddits to understand tone and hot topics",
             ["python", _script_path("reddit-explore", "scripts/subreddit.py"), first_sub],
-            output_key="subreddit_data",
+            output_key="research_subreddits",
             retry={"max_attempts": 2, "delay_seconds": 5},
         ),
         _step(
@@ -691,7 +691,7 @@ def brand_growth(brand, subreddits, post_count=1, style=None):
             ["python", _script_path("reddit-publish", "scripts/draft.py"),
              "{research_content.records_path}"] + (["--style", style] if style else []),
             depends_on=["research_content"],
-            output_key="draft",
+            output_key="draft_post",
             condition="research_content.success == true",
             checkpoint=True,
         ),
@@ -700,9 +700,9 @@ def brand_growth(brand, subreddits, post_count=1, style=None):
             "reddit-publish",
             "Publish the approved post",
             ["python", _script_path("reddit-publish", "scripts/publish.py"),
-             "{draft.records_path}"],
+             "{draft_post.draft_path}"],
             depends_on=["draft_post"],
-            output_key="publish",
+            output_key="publish_post",
             condition="draft_post.success == true",
         ),
         _step(
@@ -710,7 +710,7 @@ def brand_growth(brand, subreddits, post_count=1, style=None):
             "reddit-interact",
             "Monitor and reply to comments on the published post",
             ["python", _script_path("reddit-interact", "scripts/comment.py"),
-             "{publish.post_url}", "--text-file", "engage_response.txt"],
+             "{publish_post.post_url}", "--text-file", "engage_response.txt"],
             depends_on=["publish_post"],
             output_key="engage",
             condition="publish_post.success == true",
@@ -733,7 +733,7 @@ def track_trends(topic, subreddits=None, time_filter="week"):
             "reddit-explore",
             "Search for trending posts about the topic",
             search_cmd,
-            output_key="trends",
+            output_key="search_trends",
             retry={"max_attempts": 2, "delay_seconds": 5},
         ),
         _step(
@@ -762,7 +762,7 @@ def engage_community(brand, subreddits=None, engage_count=5):
             "reddit-explore",
             "Find relevant discussions about the brand",
             search_cmd,
-            output_key="discussions",
+            output_key="find_discussions",
             checkpoint=True,
             retry={"max_attempts": 2, "delay_seconds": 5},
         ),
@@ -771,7 +771,7 @@ def engage_community(brand, subreddits=None, engage_count=5):
             "reddit-interact",
             "Comment on selected posts",
             ["python", _script_path("reddit-interact", "scripts/comment.py"),
-             "{discussions.posts[0].url}", "--text", "Thanks for sharing!"],
+             "{find_discussions.posts.0.url}", "--text", "Thanks for sharing!"],
             depends_on=["find_discussions"],
             output_key="engage",
             condition="find_discussions.success == true",
@@ -781,7 +781,7 @@ def engage_community(brand, subreddits=None, engage_count=5):
             "reddit-interact",
             "Upvote relevant posts",
             ["python", _script_path("reddit-interact", "scripts/upvote.py"),
-             "{discussions.posts[0].url}"],
+             "{find_discussions.posts.0.url}"],
             depends_on=["engage"],
             output_key="upvote",
             condition="engage.success == true",

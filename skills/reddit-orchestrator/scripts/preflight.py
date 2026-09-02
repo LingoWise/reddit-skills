@@ -7,9 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.skill_catalog import SKILLS
 from pipeline.paths import skill_dir
-
+from pipeline.skill_catalog import SKILLS
 
 REQUIRED_ENV = []
 

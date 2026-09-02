@@ -42,6 +42,12 @@ class TestMatchWorkflow:
         assert result is not None
         assert result[0] == "track_trends"
 
+    def test_track_trends_chinese_no_colon(self):
+        result = match_workflow("热门的AI工具")
+        assert result is not None
+        assert result[0] == "track_trends"
+        assert "AI" in result[1]["topic"]
+
     def test_engage_community_english(self):
         result = match_workflow("engage with communities about my product Acme")
         assert result is not None
@@ -81,3 +87,9 @@ class TestPlan:
         result = plan("what is the weather today?")
         assert "error" in result
         assert "could not match" in result["error"].lower()
+
+    def test_plan_forced_brand_growth_no_subreddits(self):
+        """Forcing brand_growth without matching pattern should not crash."""
+        p = plan("some random text", workflow="brand_growth")
+        assert p["workflow"] == "brand_growth"
+        assert len(p["steps"]) >= 5

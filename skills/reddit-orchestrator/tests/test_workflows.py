@@ -6,11 +6,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.workflows import (
-    validate_idea,
     brand_growth,
-    track_trends,
-    engage_community,
     build_plan,
+    engage_community,
+    track_trends,
+    validate_idea,
 )
 
 

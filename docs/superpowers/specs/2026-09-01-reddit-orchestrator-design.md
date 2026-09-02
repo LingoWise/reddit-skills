@@ -55,7 +55,7 @@ Host agent reads events, surfaces results to user
 Defines the 4 known workflow templates as functions that return plan JSON:
 
 - `validate_idea(idea, profile="standard") -> plan` — calls reddit-validator pipeline
-- `brand_growth(brand, subreddits, post_count=1) -> plan` — multi-step campaign
+- `brand_growth(brand, subreddits="", post_count=1, style=None) -> plan` — multi-step campaign
 - `track_trends(topic, subreddits=None) -> plan` — discovery + summary
 - `engage_community(brand, subreddits) -> plan` — discovery + interaction
 

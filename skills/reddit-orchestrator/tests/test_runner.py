@@ -1,6 +1,6 @@
+import io
 import json
 import sys
-import io
 from pathlib import Path
 
 import pytest
@@ -8,10 +8,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.runner import (
-    resolve_placeholders,
     evaluate_condition,
-    topological_sort,
     execute,
+    resolve_placeholders,
+    topological_sort,
 )
 
 
@@ -79,6 +79,12 @@ class TestResolvePlaceholders:
         command = ["python", "script.py", "{unknown.thing}"]
         resolved = resolve_placeholders(command, {}, {})
         assert "{unknown.thing}" in resolved
+
+    def test_resolves_list_index_reference(self):
+        command = ["python", "script.py", "{find.posts.0.url}"]
+        outputs = {"find": {"posts": [{"url": "https://reddit.com/r/test/p1"}]}}
+        resolved = resolve_placeholders(command, outputs, {})
+        assert resolved == ["python", "script.py", "https://reddit.com/r/test/p1"]
 
     def test_multiple_placeholders(self):
         command = ["python", "script.py", "{a.path}", "--out", "{b.out}"]
@@ -235,6 +241,142 @@ class TestExecute:
                     "depends_on": ["first"],
                     "output_key": "second",
                     "condition": "first.success == true",
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+            ],
+        }
+        events = list(execute(plan))
+        skipped = [e for e in events if e["event"] == "step_skipped"]
+        assert len(skipped) == 1
+        assert skipped[0]["step"] == "second"
+
+    def test_non_json_success_runs_downstream(self):
+        """Steps that emit plain text should still let downstream steps run."""
+        plan = {
+            "plan_id": "test-nonjson",
+            "workflow": "test",
+            "request": "test",
+            "steps": [
+                {
+                    "name": "first",
+                    "skill": "test",
+                    "description": "plain text",
+                    "command": ["echo", "hello"],
+                    "depends_on": [],
+                    "output_key": "first",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+                {
+                    "name": "second",
+                    "skill": "test",
+                    "description": "runs after plain text",
+                    "command": ["echo", "world"],
+                    "depends_on": ["first"],
+                    "output_key": "second",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+            ],
+        }
+        events = list(execute(plan))
+        assert all(e["event"] != "step_failed" for e in events)
+        assert any(e["event"] == "step_done" and e["step"] == "second" for e in events)
+
+    def test_parsed_json_array_does_not_crash(self):
+        """Subprocesses that print a JSON array should be treated as success."""
+        plan = {
+            "plan_id": "test-array",
+            "workflow": "test",
+            "request": "test",
+            "steps": [
+                {
+                    "name": "arr",
+                    "skill": "test",
+                    "description": "json array",
+                    "command": ["python", "-c", "import json; print(json.dumps([1,2,3]))"],
+                    "depends_on": [],
+                    "output_key": "arr",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+            ],
+        }
+        events = list(execute(plan))
+        done = next(e for e in events if e["event"] == "step_done")
+        assert done["success"] is True
+
+    def test_resume_skips_completed_steps(self):
+        """Resuming a plan should skip already-completed steps."""
+        plan = {
+            "plan_id": "test-resume",
+            "workflow": "test",
+            "request": "test",
+            "steps": [
+                {
+                    "name": "first",
+                    "skill": "test",
+                    "description": "already done",
+                    "command": ["python", "-c", "import json; print(json.dumps({'success': True, 'data': 'x'}))"],
+                    "depends_on": [],
+                    "output_key": "first",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+                {
+                    "name": "second",
+                    "skill": "test",
+                    "description": "new step",
+                    "command": ["echo", "world"],
+                    "depends_on": ["first"],
+                    "output_key": "second",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+            ],
+        }
+        state = {
+            "plan_id": "test-resume",
+            "step_outputs": {"first": {"success": True, "data": "x"}},
+            "skipped_steps": [],
+        }
+        events = list(execute(plan, state=state))
+        resumed = [e for e in events if e["event"] == "step_done" and e.get("resumed")]
+        assert len(resumed) == 1
+        assert resumed[0]["step"] == "first"
+
+    def test_condition_none_skips_on_dep_failure(self):
+        """Steps with condition=None should still be skipped when a dependency fails."""
+        plan = {
+            "plan_id": "test-4b",
+            "workflow": "test",
+            "request": "test",
+            "steps": [
+                {
+                    "name": "first",
+                    "skill": "test",
+                    "description": "fails",
+                    "command": ["python", "-c", "import json; print(json.dumps({\"success\": False}))"],
+                    "depends_on": [],
+                    "output_key": "first",
+                    "condition": None,
+                    "retry": {"max_attempts": 1, "delay_seconds": 0},
+                    "checkpoint": False,
+                },
+                {
+                    "name": "second",
+                    "skill": "test",
+                    "description": "should be skipped despite condition=None",
+                    "command": ["echo", "should not run"],
+                    "depends_on": ["first"],
+                    "output_key": "second",
+                    "condition": None,
                     "retry": {"max_attempts": 1, "delay_seconds": 0},
                     "checkpoint": False,
                 },

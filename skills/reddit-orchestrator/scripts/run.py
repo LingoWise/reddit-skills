@@ -5,8 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.runner import execute
+from pipeline.paths import orchestrator_dir
 from pipeline.planner import plan as generate_plan
+from pipeline.runner import execute
 
 
 def parse_args(argv=None):
@@ -21,6 +22,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    state = None
 
     if args.resume:
         from pipeline.state import load_state
@@ -28,7 +30,7 @@ def main(argv=None):
         if state is None:
             print(json.dumps({"error": f"No saved state for plan {args.resume}"}))
             return 1
-        plan_path = Path(__file__).resolve().parent.parent.parent / ".reddit-skills" / "orchestrator" / f"{args.resume}.plan.json"
+        plan_path = orchestrator_dir() / f"{args.resume}.plan.json"
         if not plan_path.exists():
             print(json.dumps({"error": f"No plan file for plan {args.resume}"}))
             return 1
@@ -44,7 +46,12 @@ def main(argv=None):
         print(json.dumps({"error": "Either --plan or --request is required"}))
         return 1
 
-    for event in execute(plan, dry_run=args.dry_run):
+    # Save plan to disk for potential --resume
+    plan_id = plan.get("plan_id", "unknown")
+    plan_path = orchestrator_dir() / f"{plan_id}.plan.json"
+    plan_path.write_text(json.dumps(plan, indent=2, default=str))
+
+    for event in execute(plan, dry_run=args.dry_run, state=state):
         print(json.dumps(event))
         sys.stdout.flush()
 

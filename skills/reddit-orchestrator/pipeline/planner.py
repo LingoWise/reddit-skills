@@ -2,9 +2,8 @@
 
 import re
 
-from .workflows import build_plan
 from .skill_catalog import catalog_summary
-
+from .workflows import build_plan
 
 WORKFLOW_PATTERNS = [
     {
@@ -35,7 +34,8 @@ WORKFLOW_PATTERNS = [
             r"trends?\s+on\s+reddit",
             r"趋势", r"热门",
         ],
-        "extract_topic": r"(?:trends?\s+for\s+|趋势.*?[:：]\s*|热门.*?[:：]\s*)(.+)",
+        "extract_topic": r"(?:trends?\s+for\s+(.+)|趋势[:：]\s*(.+)|热门[:：]\s*(.+)|(.+?)(?:的)?(?:趋势|热门)|热门(?:的)?\s*(.+)|趋势\s*(.+))",
+        "extract_topic_group_fallback": True,
     },
     {
         "name": "engage_community",
@@ -102,7 +102,11 @@ def _extract_params(workflow_def, request_text):
 
     elif name == "track_trends":
         topic_m = re.search(workflow_def.get("extract_topic", r"(.+)"), request_text, re.IGNORECASE)
-        params["topic"] = topic_m.group(1).strip() if topic_m else request_text
+        if topic_m:
+            groups = [g for g in topic_m.groups() if g is not None]
+            params["topic"] = groups[0].strip() if groups else request_text
+        else:
+            params["topic"] = request_text
         sub_m = re.search(r"subreddits?\s+(\S+)", request_text, re.IGNORECASE)
         if sub_m:
             params["subreddits"] = sub_m.group(1)
@@ -132,7 +136,6 @@ def _default_params(workflow, request_text):
 def llm_plan(request_text):
     """Generate a plan using the LLM fallback."""
     import importlib.util
-    import json
     import time
     import uuid
     from pathlib import Path
@@ -188,11 +191,11 @@ def plan(request_text, workflow=None):
         workflow_name, params = matched
         return build_plan(workflow_name, request_text, params)
 
-    ok, msg = _llm_available()
+    ok, _ = _llm_available()
     if ok:
         try:
             return llm_plan(request_text)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return {"error": f"LLM planning failed: {exc}", "request": request_text}
 
     return {
