@@ -40,7 +40,7 @@ def main(argv=None):
             comment_limit=args.comments,
             comment_sort=args.comment_sort,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(json.dumps({"event": "done", "success": False, "error": str(exc), "code": "fetch_error"}))
         return 1
     finally:
@@ -50,7 +50,8 @@ def main(argv=None):
     out_path = Path(args.out) if args.out else records_dir() / f"search_{int(time.time())}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(records, indent=2, default=str))
-    print(json.dumps({"event": "done", "success": True, "count": len(records), "records_path": str(out_path)}))
+    posts = [r for r in records if not r.get("is_comment")][:10]
+    print(json.dumps({"event": "done", "success": True, "count": len(records), "records_path": str(out_path), "posts": posts}))
     return 0
 
 
